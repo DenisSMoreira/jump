@@ -109,7 +109,11 @@
     { name: 'Vulcão',    minScore: 1500, gapMin: 66, gapMax: 128, spring: 0.12, moving: 0.30, enemy: 0.13, pickup: 0.035,
       enemySpeed: [1.8, 3.4], moveMult: 1.40, sky: ['#1a0b12', '#4a1620', '#8a2f1d'], plat: { body: '#9c3f24', top: '#e0703c', deco: 'lava' } },
     { name: 'Espaço',    minScore: 2000, gapMin: 70, gapMax: 132, spring: 0.10, moving: 0.34, enemy: 0.16, pickup: 0.030,
-      enemySpeed: [2.0, 3.8], moveMult: 1.50, sky: ['#030510', '#070d1f', '#0e1730'], plat: { body: '#5b6fae', top: '#a9bcf0', deco: 'spark' } }
+      enemySpeed: [2.0, 3.8], moveMult: 1.50, sky: ['#030510', '#070d1f', '#0e1730'], plat: { body: '#5b6fae', top: '#a9bcf0', deco: 'spark' } },
+    { name: 'Planeta',   minScore: 3000, gapMin: 74, gapMax: 138, spring: 0.09, moving: 0.38, enemy: 0.19, pickup: 0.028,
+      enemySpeed: [2.2, 4.2], moveMult: 1.65, sky: ['#0a1e2e', '#123c4f', '#1d5c6b'], plat: { body: '#2e7d8a', top: '#6fd3c7', deco: 'alien' } },
+    { name: 'Nebulosa',  minScore: 4000, gapMin: 78, gapMax: 142, spring: 0.08, moving: 0.42, enemy: 0.22, pickup: 0.026,
+      enemySpeed: [2.4, 4.6], moveMult: 1.80, sky: ['#1a0530', '#3d1157', '#6b2a8f'], plat: { body: '#7b4fae', top: '#c99af0', deco: 'nebula' } }
   ];
 
   function metersAt(y) { return Math.max(0, (H - 140 - y) / METER_SCALE); }
@@ -125,7 +129,10 @@
     slime: { minStage: 2, name: 'slime' },
     bat:   { minStage: 3, name: 'morcego' },
     ghost: { minStage: 3, name: 'fantasma' },
-    ufo:   { minStage: 5, name: 'OVNI' }
+    ufo:   { minStage: 5, name: 'OVNI' },
+    robot: { minStage: 6, name: 'robô' },
+    alien: { minStage: 6, name: 'alien' },
+    comet: { minStage: 7, name: 'cometa' }
   };
 
   // ---------- State ----------
@@ -171,6 +178,8 @@
   const ridgeNear = [];    // Montanhas: near peaks
   const volcanoes = [];    // Vulcão: cones on the edges
   const planets = [];      // Espaço: planet / moon / nebula
+  const spires = [];       // Planeta: crystal spires on the edges
+  const gasClouds = [];    // Nebulosa: drifting gas blobs
   const caveWalls = { left: [], right: [] };
   let caveTopFar = [], caveTopNear = [], caveBotFar = [], caveBotNear = [], caveGems = [];
   const ambient = [];      // per-stage ambient particles (screen space)
@@ -303,9 +312,9 @@
   }
 
   // ---------- Ambient particles (per-stage atmosphere, screen space) ----------
-  const AMBIENT_TYPES = ['fluff', 'leaf', 'snow', 'spore', 'ember', 'shoot'];
-  const AMBIENT_RATE = [0.10, 0.09, 0.13, 0.08, 0.16, 0.012];
-  const AMBIENT_CAP  = [24, 22, 30, 20, 30, 5];
+  const AMBIENT_TYPES = ['fluff', 'leaf', 'snow', 'spore', 'ember', 'shoot', 'dust', 'stardust'];
+  const AMBIENT_RATE = [0.10, 0.09, 0.13, 0.08, 0.16, 0.012, 0.10, 0.08];
+  const AMBIENT_CAP  = [24, 22, 30, 20, 30, 5, 26, 30];
 
   function spawnAmbient(type) {
     if (type === 'shoot') {
@@ -313,20 +322,22 @@
       ambient.push({ type: type, x: fromLeft ? -20 : W + 20, y: rand(30, H * 0.4), vx: (fromLeft ? 1 : -1) * rand(6, 9), vy: rand(1.2, 2.2), life: 70, maxLife: 70 });
       return;
     }
-    const rising = type === 'spore' || type === 'ember';
+    const rising = type === 'spore' || type === 'ember' || type === 'dust' || type === 'stardust';
     const p = {
       type: type,
       x: Math.random() * W,
       y: rising ? H + rand(4, 30) : -rand(4, 30),
       vy: 0,
       phase: Math.random() * Math.PI * 2,
-      size: type === 'fluff' ? rand(1.8, 3.4) : type === 'snow' ? rand(1, 2.4) : type === 'leaf' ? rand(3, 5) : rand(1.6, 3),
+      size: type === 'fluff' ? rand(1.8, 3.4) : type === 'snow' ? rand(1, 2.4) : type === 'leaf' ? rand(3, 5) : type === 'dust' ? rand(1.2, 2.4) : type === 'stardust' ? rand(1, 2.2) : rand(1.6, 3),
       color: null
     };
     if (type === 'fluff') p.vy = rand(0.35, 0.8);
     else if (type === 'leaf') { p.vy = rand(0.6, 1.2); p.color = ['#e8a13c', '#d97b2f', '#8fae4a'][Math.floor(Math.random() * 3)]; }
     else if (type === 'snow') p.vy = rand(0.45, 1.05);
     else if (type === 'spore') p.vy = -rand(0.3, 0.7);
+    else if (type === 'dust') { p.vy = -rand(0.25, 0.6); p.color = ['#6fd3c7', '#9fe8dc'][Math.floor(Math.random() * 2)]; }
+    else if (type === 'stardust') { p.vy = -rand(0.3, 0.8); p.color = ['#ff7fc4', '#c99af0', '#7fd3f0'][Math.floor(Math.random() * 3)]; }
     else p.vy = -rand(0.8, 1.9); // ember
     ambient.push(p);
   }
@@ -381,6 +392,20 @@
         ctx.globalAlpha = 0.18 + 0.3 * tw;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 2.4, 0, Math.PI * 2); ctx.fill();
         ctx.globalAlpha = 0.5 + 0.4 * tw;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else if (p.type === 'dust') {
+        const tw = 0.5 + 0.5 * Math.sin(tick * 0.05 + p.phase);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = 0.12 + 0.2 * tw;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 2.6, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.4 + 0.35 * tw;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else if (p.type === 'stardust') {
+        const tw = 0.5 + 0.5 * Math.sin(tick * 0.09 + p.phase);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = 0.14 + 0.26 * tw;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 3, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.5 + 0.45 * tw;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
       } else { // ember
         const fl = 0.6 + 0.4 * Math.sin(tick * 0.3 + p.phase);
@@ -464,6 +489,17 @@
     for (let i = 0; i < 3; i++) {
       planets.push({ x: rand(60, W - 60), y: Math.random() * (H + 200), type: types[i], s: rand(0.85, 1.2) });
     }
+
+    spires.length = 0;
+    for (let i = 0; i < 8; i++) {
+      const left = i % 2 === 0;
+      spires.push({ x: left ? rand(16, 54) : W - rand(16, 54), y: Math.random() * (H + 90), s: rand(0.8, 1.4), hue: Math.floor(Math.random() * 3) });
+    }
+
+    gasClouds.length = 0;
+    for (let i = 0; i < 4; i++) {
+      gasClouds.push({ x: rand(40, W - 40), y: Math.random() * (H + 160), s: rand(0.8, 1.5), hue: Math.floor(Math.random() * 3) });
+    }
   }
 
   function generatePlatform(topY) {
@@ -501,11 +537,14 @@
         vy: 0,
         phase: Math.random() * Math.PI * 2
       };
-      if (kind === 'slime') { e.w = 34; e.h = 28; e.vx = 0; e.vy = -rand(4.5, 6.5); }
-      else if (kind === 'bat')   { e.w = 30; e.h = 22; e.vx *= 1.25; }
-      else if (kind === 'ghost') { e.w = 30; e.h = 34; e.vx = dir * rand(0.4, 0.9); }
-      else if (kind === 'ufo')   { e.w = 40; e.h = 24; e.vx *= 1.5; }
-      else                       { e.w = 36; e.h = 26; } // ptero
+      if (kind === 'slime')   { e.w = 34; e.h = 28; e.vx = 0; e.vy = -rand(4.5, 6.5); }
+      else if (kind === 'bat')    { e.w = 30; e.h = 22; e.vx *= 1.25; }
+      else if (kind === 'ghost')  { e.w = 30; e.h = 34; e.vx = dir * rand(0.4, 0.9); }
+      else if (kind === 'ufo')    { e.w = 40; e.h = 24; e.vx *= 1.5; }
+      else if (kind === 'robot')  { e.w = 34; e.h = 28; e.vx *= 0.9; }
+      else if (kind === 'alien')  { e.w = 34; e.h = 28; e.vx = 0; e.vy = -rand(4.5, 6.2); }
+      else if (kind === 'comet')  { e.w = 30; e.h = 20; e.vx *= 1.7; }
+      else                        { e.w = 36; e.h = 26; } // ptero
       enemies.push(e);
     }
 
@@ -694,6 +733,29 @@
           e.vx += (want - e.vx) * 0.02;
           e.x += e.vx; wrapEnemy(e);
           e.y = e.baseY + Math.sin(tick * 0.1 + e.phase) * 12;
+        } else if (e.kind === 'robot') {
+          // patrols back and forth, turning at the screen edges
+          e.x += e.vx;
+          if (e.x < 2) { e.x = 2; e.vx = Math.abs(e.vx); }
+          else if (e.x > W - 2 - e.w) { e.x = W - 2 - e.w; e.vx = -Math.abs(e.vx); }
+          e.y = e.baseY + Math.sin(tick * 0.15 + e.phase) * 8;
+        } else if (e.kind === 'alien') {
+          // hops and drifts toward the player between bounces
+          e.vy += 0.32;
+          e.y += e.vy;
+          e.x += e.vx;
+          if (e.x < 0 || e.x > W - e.w) { e.vx = -e.vx; e.x = clamp(e.x, 0, W - e.w); }
+          if (e.y >= e.baseY) {
+            e.y = e.baseY;
+            e.vy = -rand(4.5, 6.2);
+            const want = Math.sign((character.x + character.w / 2) - (e.x + e.w / 2)) * 1.3;
+            e.vx += (want - e.vx) * 0.45;
+          }
+        } else if (e.kind === 'comet') {
+          // fast diagonal streak with a big vertical swing
+          e.phase += 0.085;
+          e.x += e.vx; wrapEnemy(e);
+          e.y = e.baseY + Math.sin(e.phase) * 30;
         } else { // ptero, ufo
           e.x += e.vx; wrapEnemy(e);
           if (e.kind === 'ufo') e.y = e.baseY + Math.sin(tick * 0.12 + e.phase) * 24;
@@ -799,6 +861,8 @@
     drawCave();
     drawVolcanoSide();
     drawSpaceObjects();
+    drawAlienTerrain();
+    drawNebulaBands();
   }
 
   // Sun (early stages) gives way to a cratered moon (late stages)
@@ -1133,6 +1197,121 @@
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
   }
 
+  // Planeta: crystal spires passing by on both edges + a faint horizon glow
+  function drawAlienTerrain() {
+    const a = fadeWindow(skyT, 5.6, 7.1, 0.4);
+    if (a <= 0) return;
+    const f = 0.5, span = H + 90;
+    ctx.globalAlpha = a;
+    for (const s of spires) {
+      let sy = (s.y - cameraY * f) % span;
+      if (sy < 0) sy += span;
+      alienSpike(s.x, sy - 45, s.s, s.hue);
+    }
+    // Horizon glow at the bottom of the screen
+    let g = ctx.createLinearGradient(0, H - 90, 0, H);
+    g.addColorStop(0, 'rgba(111,211,199,0)');
+    g.addColorStop(1, 'rgba(111,211,199,' + (0.28 * a).toFixed(3) + ')');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, H - 90, W, 90);
+    ctx.globalAlpha = 1;
+  }
+
+  function alienSpike(x, y, s, hue) {
+    const cols = [['#2e7d8a', '111,211,199'], ['#3b6ea5', '127,184,240'], ['#4a5fae', '154,168,240']];
+    ctx.fillStyle = cols[hue][0];
+    ctx.beginPath();
+    ctx.moveTo(x - 12 * s, y + 26 * s);
+    ctx.lineTo(x - 3 * s, y - 14 * s);
+    ctx.lineTo(x + 3 * s, y - 14 * s);
+    ctx.lineTo(x + 12 * s, y + 26 * s);
+    ctx.closePath();
+    ctx.fill();
+    // Glowing tip (twinkles)
+    const tw = 0.5 + 0.5 * Math.sin(tick * 0.08 + x);
+    ctx.fillStyle = 'rgba(' + cols[hue][1] + ',' + (0.35 + 0.6 * tw).toFixed(2) + ')';
+    ctx.beginPath();
+    ctx.moveTo(x - 3 * s, y - 14 * s);
+    ctx.lineTo(x, y - 26 * s);
+    ctx.lineTo(x + 3 * s, y - 14 * s);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Nebulosa: drifting gas blobs, aurora ribbons and a rotating spiral galaxy
+  function drawNebulaBands() {
+    const a = fadeWindow(skyT, 6.5, 8.2, 0.4);
+    if (a <= 0) return;
+    ctx.globalAlpha = a;
+    // Drifting gas blobs (slow parallax wrap)
+    const f = 0.1, span = H + 160;
+    for (const c of gasClouds) {
+      let sy = (c.y - cameraY * f) % span;
+      if (sy < 0) sy += span;
+      nebulaGas(c.x, sy - 80, 70 * c.s, c.hue);
+    }
+    // Aurora ribbons
+    const bands = [
+      { y: H * 0.24, amp: 26, col: 'rgba(127,227,255,', sp: 0.02 },
+      { y: H * 0.42, amp: 34, col: 'rgba(201,154,240,', sp: -0.016 },
+      { y: H * 0.62, amp: 22, col: 'rgba(255,127,196,', sp: 0.013 }
+    ];
+    for (const b of bands) {
+      ctx.strokeStyle = b.col + '0.14)';
+      ctx.lineWidth = 26;
+      ctx.beginPath();
+      for (let x = -10; x <= W + 10; x += 16) {
+        const y = b.y + Math.sin(x * 0.018 + tick * b.sp) * b.amp;
+        if (x === -10) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    // Spiral galaxy
+    spiralGalaxy(W * 0.74, H * 0.2, 34);
+    ctx.globalAlpha = 1;
+  }
+
+  function nebulaGas(x, y, r, hue) {
+    const cols = [
+      ['rgba(150,96,224,', 'rgba(88,70,190,'],
+      ['rgba(255,127,196,', 'rgba(190,80,160,'],
+      ['rgba(96,180,224,', 'rgba(70,130,190,']
+    ][hue];
+    let g = ctx.createRadialGradient(x, y, 4, x, y, r);
+    g.addColorStop(0, cols[0] + '0.30)');
+    g.addColorStop(0.6, cols[1] + '0.15)');
+    g.addColorStop(1, cols[1] + '0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  function spiralGalaxy(x, y, r) {
+    const rot = tick * 0.004;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    let g = ctx.createRadialGradient(0, 0, 2, 0, 0, r);
+    g.addColorStop(0, 'rgba(255,240,220,0.8)');
+    g.addColorStop(0.35, 'rgba(201,154,240,0.35)');
+    g.addColorStop(1, 'rgba(201,154,240,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    // Two spiral arms
+    ctx.strokeStyle = 'rgba(230,200,255,0.4)';
+    ctx.lineWidth = 3;
+    for (let arm = 0; arm < 2; arm++) {
+      ctx.beginPath();
+      for (let i = 0; i <= 26; i++) {
+        const ang = arm * Math.PI + i * 0.24;
+        const rr = 4 + i * (r - 6) / 26;
+        const px = Math.cos(ang) * rr, py = Math.sin(ang) * rr * 0.75;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // Puffy multi-lobe cloud shape (shared by near + far layers)
   function drawCloudShape(x, y, r) {
     ctx.beginPath();
@@ -1243,6 +1422,26 @@
         ctx.arc(gx, sy - 3, 1.2, 0, Math.PI * 2);
         ctx.fill();
       }
+    } else if (t.deco === 'alien') {
+      for (let i = 0; i < 3; i++) {
+        const gx = p.x + p.w * (0.25 + i * 0.25);
+        ctx.fillStyle = '#6fd3c7';
+        ctx.beginPath();
+        ctx.moveTo(gx - 3, sy);
+        ctx.lineTo(gx, sy - 7);
+        ctx.lineTo(gx + 3, sy);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else if (t.deco === 'nebula') {
+      for (let i = 0; i < 3; i++) {
+        const gx = p.x + p.w * (0.25 + i * 0.25);
+        const a = 0.5 + 0.5 * Math.sin(tick * 0.1 + i * 2 + p.x);
+        ctx.fillStyle = 'rgba(255,127,196,' + (0.35 + 0.6 * a).toFixed(2) + ')';
+        ctx.beginPath();
+        ctx.arc(gx, sy - 4, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else { // spark (space) — twinkling dots
       for (let i = 0; i < 3; i++) {
         const gx = p.x + p.w * (0.25 + i * 0.25);
@@ -1280,6 +1479,9 @@
     if (e.kind === 'bat')   return drawBat(e);
     if (e.kind === 'ghost') return drawGhost(e);
     if (e.kind === 'ufo')   return drawUfo(e);
+    if (e.kind === 'robot') return drawRobot(e);
+    if (e.kind === 'alien') return drawAlien(e);
+    if (e.kind === 'comet') return drawComet(e);
     drawPtero(e);
   }
 
@@ -1511,6 +1713,127 @@
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  function drawRobot(e) {
+    const sy = e.y - cameraY;
+    if (sy < -40 || sy > H + 40) return;
+    ctx.save();
+    ctx.translate(e.x + e.w / 2, sy + e.h / 2);
+
+    // Antenna with blinking light
+    const blink = Math.sin(tick * 0.3 + e.phase) > 0 ? '#ff6b6b' : 'rgba(255,107,107,0.35)';
+    ctx.strokeStyle = '#8fa0bd';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(0, -20); ctx.stroke();
+    ctx.fillStyle = blink;
+    ctx.beginPath(); ctx.arc(0, -21.5, 2.6, 0, Math.PI * 2); ctx.fill();
+
+    // Body (boxy) + darker panel
+    ctx.fillStyle = '#9fb2cc';
+    roundRect(-14, -13, 28, 24, 5);
+    ctx.fill();
+    ctx.fillStyle = '#6b7f9e';
+    roundRect(-10, -2, 20, 10, 3);
+    ctx.fill();
+
+    // Scanning eye
+    const scan = Math.sin(tick * 0.12 + e.phase) * 5;
+    ctx.fillStyle = '#1d2b3a';
+    roundRect(-9, -10, 18, 7, 3);
+    ctx.fill();
+    ctx.fillStyle = '#4fe3c1';
+    ctx.beginPath(); ctx.arc(scan, -6.5, 2.6, 0, Math.PI * 2); ctx.fill();
+
+    // Hover thrusters (flickering)
+    const fl = 0.5 + 0.5 * Math.sin(tick * 0.4 + e.phase);
+    ctx.fillStyle = 'rgba(127,227,255,' + (0.35 + 0.4 * fl).toFixed(2) + ')';
+    ctx.beginPath(); ctx.arc(-8, 14, 3 + fl * 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(8, 14, 3 + fl * 1.5, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawAlien(e) {
+    const sy = e.y - cameraY;
+    if (sy < -40 || sy > H + 40) return;
+    ctx.save();
+    ctx.translate(e.x + e.w / 2, sy + e.h); // anchor at the bottom
+    const stretch = clamp(-e.vy * 0.05, -0.3, 0.35); // tall while rising, flat on landing
+    ctx.scale(1 - stretch * 0.7, 1 + stretch);
+
+    // Antennae with glowing tips
+    const sway = Math.sin(tick * 0.15 + e.phase) * 3;
+    ctx.strokeStyle = '#4caf50';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-6, -22); ctx.quadraticCurveTo(-9 + sway, -30, -8 + sway, -34); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(6, -22); ctx.quadraticCurveTo(9 + sway, -30, 8 + sway, -34); ctx.stroke();
+    const tipA = 0.5 + 0.5 * Math.sin(tick * 0.2 + e.phase);
+    ctx.fillStyle = 'rgba(174,240,120,' + (0.5 + 0.5 * tipA).toFixed(2) + ')';
+    ctx.beginPath(); ctx.arc(-8 + sway, -35, 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(8 + sway, -35, 2.4, 0, Math.PI * 2); ctx.fill();
+
+    // Body (teardrop)
+    ctx.fillStyle = '#7ed957';
+    ctx.beginPath();
+    ctx.moveTo(-14, 0);
+    ctx.quadraticCurveTo(-16, -22, 0, -26);
+    ctx.quadraticCurveTo(16, -22, 14, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Belly highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(-5, -12, 4.5, 7, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Big eyes looking toward the player
+    const look = clamp((character.x + character.w / 2) - (e.x + e.w / 2), -1.6, 1.6);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.ellipse(-5.5, -14, 3.8, 4.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(5.5, -14, 3.8, 4.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#20303a';
+    ctx.beginPath(); ctx.arc(-5.5 + look, -13.6, 1.9, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(5.5 + look, -13.6, 1.9, 0, Math.PI * 2); ctx.fill();
+
+    // Mouth
+    ctx.fillStyle = '#2e7d32';
+    ctx.beginPath();
+    ctx.ellipse(0, -7, 2.6, 1.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawComet(e) {
+    const sy = e.y - cameraY;
+    if (sy < -40 || sy > H + 40) return;
+    ctx.save();
+    ctx.translate(e.x + e.w / 2, sy + e.h / 2);
+
+    // Glowing tail trailing behind the motion direction
+    const dy = Math.cos(e.phase) * 30 * 0.085; // vertical component of the swing
+    let tx = -Math.sign(e.vx), ty = -dy;
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl; ty /= tl;
+    for (let i = 6; i >= 1; i--) {
+      ctx.fillStyle = 'rgba(255,' + (180 - i * 14) + ',90,' + (0.34 - i * 0.045).toFixed(2) + ')';
+      ctx.beginPath();
+      ctx.arc(tx * i * 7, ty * i * 7, 6.5 - i * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Bright head with a halo
+    let g = ctx.createRadialGradient(0, 0, 1, 0, 0, 14);
+    g.addColorStop(0, 'rgba(255,244,214,0.9)');
+    g.addColorStop(1, 'rgba(255,180,90,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff3d6';
+    ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, Math.PI * 2); ctx.fill();
 
     ctx.restore();
   }

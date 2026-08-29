@@ -19,7 +19,7 @@ Um clone do clássico **Doodle Jump** em um único arquivo `index.html` — HTML
 
 ## Fases e monstros
 
-A dificuldade cresce com a altitude, em 6 fases (Prado → Floresta → Montanhas → Cavernas → Vulcão → Espaço), cada uma com céu, plataformas e inimigos próprios:
+A dificuldade cresce com a altitude, em 8 fases (Prado → Floresta → Montanhas → Cavernas → Vulcão → Espaço → Planeta → Nebulosa), cada uma com céu, plataformas e inimigos próprios:
 
 | Monstro | Comportamento | Aparece a partir de |
 |---|---|---|
@@ -28,6 +28,9 @@ A dificuldade cresce com a altitude, em 6 fases (Prado → Floresta → Montanha
 | 🦇 Morcego | Rápido, voa em zigue-zague | Cavernas |
 | 👻 Fantasma | Semitransparente, persegue você horizontalmente | Cavernas |
 | 🛸 OVNI | Rápido com oscilação vertical forte e luzes piscando | Espaço |
+| 🤖 Robô | Patrulha horizontal, virando nas bordas da tela | Planeta |
+| 👽 Alien | Pula na sua direção entre um salto e outro | Planeta |
+| ☄️ Cometa | Rastro rápido em diagonal com cauda brilhante | Nebulosa |
 
 ## 🧪 Teste de prompt em modelo quantizado Q4
 
