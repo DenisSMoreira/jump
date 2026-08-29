@@ -54,6 +54,13 @@
     padding: 0 12px;
   }
   .hint b { color: #b9c4dd; font-weight: 600; }
+  .credit {
+    margin-top: 8px;
+    font-size: clamp(10px, 2vh, 12px);
+    color: #5c6478;
+    letter-spacing: 0.3px;
+    text-align: center;
+  }
 </style>
 </head>
 <body>
@@ -62,6 +69,7 @@
     <canvas id="game" width="400" height="600"></canvas>
   </div>
   <div class="hint"><b>&larr; &rarr;</b> ou <b>A / D</b> ou <b>arraste</b> para mover &middot; <b>ESPA&ccedil;O</b> ou toque para come&ccedil;ar</div>
+  <div class="credit">Feito com Qwen3 27B (Q4)</div>
 
   <script>
   'use strict';
