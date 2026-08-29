@@ -159,7 +159,17 @@
 
   // Decorative parallax clouds + stars
   const clouds = [];
+  const farClouds = [];
   const stars = [];
+  // Per-stage scenery (screen-space, wrapped with vertical parallax)
+  const trees = [];        // Floresta: tree silhouettes on the edges
+  const ridgeFar = [];     // Montanhas: distant peaks
+  const ridgeNear = [];    // Montanhas: near peaks
+  const volcanoes = [];    // Vulcão: cones on the edges
+  const planets = [];      // Espaço: planet / moon / nebula
+  const caveWalls = { left: [], right: [] };
+  let caveTopFar = [], caveTopNear = [], caveBotFar = [], caveBotNear = [], caveGems = [];
+  const ambient = [];      // per-stage ambient particles (screen space)
 
   // ---------- Helpers ----------
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
@@ -220,14 +230,20 @@
       bot: mixHex(STAGES[i].sky[2], STAGES[i + 1].sky[2], k)
     };
   }
-  function cloudFill(t) {
-    const c = clamp(t / 2, 0, 1);                       // white -> dusk blue
+  function cloudFill(t, mult) {
     const fade = clamp(1 - Math.max(0, t - 3.5) / 1.5, 0, 1); // gone in space
-    if (fade <= 0) return 'rgba(255,255,255,0)';
+    if (fade <= 0) return null;
+    const c = clamp(t / 2, 0, 1);                       // white -> dusk blue
     const A = hexToRgb('#ffffff'), B = hexToRgb('#39496e');
     return 'rgba(' + Math.round(A[0] + (B[0] - A[0]) * c) + ',' +
                    Math.round(A[1] + (B[1] - A[1]) * c) + ',' +
-                   Math.round(A[2] + (B[2] - A[2]) * c) + ',' + (0.55 * fade).toFixed(3) + ')';
+                   Math.round(A[2] + (B[2] - A[2]) * c) + ',' + (0.55 * fade * mult).toFixed(3) + ')';
+  }
+
+  // Smooth in/out window used to cross-fade scenery layers between stages
+  function fadeWindow(t, a, b, ramp) {
+    if (t <= a || t >= b) return 0;
+    return clamp(Math.min((t - a) / ramp, (b - t) / ramp), 0, 1);
   }
 
   // ---------- Particles ----------
@@ -282,15 +298,105 @@
     ctx.globalAlpha = 1;
   }
 
+  // ---------- Ambient particles (per-stage atmosphere, screen space) ----------
+  const AMBIENT_TYPES = ['fluff', 'leaf', 'snow', 'spore', 'ember', 'shoot'];
+  const AMBIENT_RATE = [0.10, 0.09, 0.13, 0.08, 0.16, 0.012];
+  const AMBIENT_CAP  = [24, 22, 30, 20, 30, 5];
+
+  function spawnAmbient(type) {
+    if (type === 'shoot') {
+      const fromLeft = Math.random() < 0.5;
+      ambient.push({ type: type, x: fromLeft ? -20 : W + 20, y: rand(30, H * 0.4), vx: (fromLeft ? 1 : -1) * rand(6, 9), vy: rand(1.2, 2.2), life: 70, maxLife: 70 });
+      return;
+    }
+    const rising = type === 'spore' || type === 'ember';
+    const p = {
+      type: type,
+      x: Math.random() * W,
+      y: rising ? H + rand(4, 30) : -rand(4, 30),
+      vy: 0,
+      phase: Math.random() * Math.PI * 2,
+      size: type === 'fluff' ? rand(1.8, 3.4) : type === 'snow' ? rand(1, 2.4) : type === 'leaf' ? rand(3, 5) : rand(1.6, 3),
+      color: null
+    };
+    if (type === 'fluff') p.vy = rand(0.35, 0.8);
+    else if (type === 'leaf') { p.vy = rand(0.6, 1.2); p.color = ['#e8a13c', '#d97b2f', '#8fae4a'][Math.floor(Math.random() * 3)]; }
+    else if (type === 'snow') p.vy = rand(0.45, 1.05);
+    else if (type === 'spore') p.vy = -rand(0.3, 0.7);
+    else p.vy = -rand(0.8, 1.9); // ember
+    ambient.push(p);
+  }
+
+  function updateAmbient() {
+    const di = Math.round(clamp(skyT, 0, STAGES.length - 1));
+    if (ambient.length < AMBIENT_CAP[di] && Math.random() < AMBIENT_RATE[di]) spawnAmbient(AMBIENT_TYPES[di]);
+    for (let i = ambient.length - 1; i >= 0; i--) {
+      const p = ambient[i];
+      if (p.type === 'shoot') {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (--p.life <= 0 || p.x < -60 || p.x > W + 60) ambient.splice(i, 1);
+        continue;
+      }
+      const sway = Math.sin(tick * 0.025 + p.phase);
+      p.x += (p.type === 'fluff' ? -0.25 : 0) + sway * (p.type === 'leaf' ? 0.9 : 0.45);
+      p.y += p.vy;
+      if (p.y < -40 || p.y > H + 40 || p.x < -30 || p.x > W + 30) ambient.splice(i, 1);
+    }
+  }
+
+  function drawAmbient() {
+    for (const p of ambient) {
+      if (p.type === 'shoot') {
+        const a = clamp(p.life / p.maxLife, 0, 1);
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.8 * a).toFixed(2) + ')';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - p.vx * 7, p.y - p.vy * 7);
+        ctx.stroke();
+      } else if (p.type === 'fluff') {
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else if (p.type === 'leaf') {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(Math.sin(tick * 0.04 + p.phase) * 1.2);
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.ellipse(0, 0, p.size, p.size * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      } else if (p.type === 'snow') {
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else if (p.type === 'spore') {
+        const tw = 0.5 + 0.5 * Math.sin(tick * 0.06 + p.phase);
+        ctx.fillStyle = '#7fe3ff';
+        ctx.globalAlpha = 0.18 + 0.3 * tw;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 2.4, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.5 + 0.4 * tw;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else { // ember
+        const fl = 0.6 + 0.4 * Math.sin(tick * 0.3 + p.phase);
+        ctx.globalAlpha = 0.5 + 0.45 * fl;
+        ctx.fillStyle = Math.random() < 0.5 ? '#ff9d3b' : '#ffd54f';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // ---------- Setup ----------
   function initClouds() {
     clouds.length = 0;
     for (let i = 0; i < 9; i++) {
-      clouds.push({
-        x: Math.random() * W,
-        y: Math.random() * H,
-        r: 14 + Math.random() * 26
-      });
+      clouds.push({ x: Math.random() * W, y: Math.random() * H, r: 14 + Math.random() * 26, drift: rand(0.08, 0.3) });
+    }
+    farClouds.length = 0;
+    for (let i = 0; i < 7; i++) {
+      farClouds.push({ x: Math.random() * W, y: Math.random() * H, r: 8 + Math.random() * 12, drift: rand(0.04, 0.15) });
     }
   }
 
@@ -304,6 +410,55 @@
         phase: Math.random() * Math.PI * 2,
         a: rand(0.5, 1)
       });
+    }
+  }
+
+  function makeRidge(peaks, hMin, hMax) {
+    const pts = [];
+    for (let i = 0; i <= peaks; i++) pts.push({ x: (W / peaks) * i + rand(-8, 8), h: rand(hMin, hMax) });
+    return pts;
+  }
+
+  function initScenery() {
+    trees.length = 0;
+    for (let i = 0; i < 8; i++) {
+      const left = i % 2 === 0;
+      trees.push({ x: left ? rand(14, 52) : W - rand(14, 52), y: Math.random() * (H + 90), s: rand(0.8, 1.35), variant: Math.floor(Math.random() * 2) });
+    }
+
+    ridgeFar.length = 0;
+    ridgeNear.length = 0;
+    for (let i = 0; i < 2; i++) {
+      ridgeFar.push({ y: i * (H + 140) / 2, pts: makeRidge(4, 34, 88) });
+      ridgeNear.push({ y: i * (H + 140) / 2, pts: makeRidge(5, 46, 110) });
+    }
+
+    caveWalls.left.length = 0;
+    caveWalls.right.length = 0;
+    for (let y = -10; y <= H + 20; y += 46) {
+      caveWalls.left.push({ y: y + rand(-8, 8), d: rand(12, 30) });
+      caveWalls.right.push({ y: y + rand(-8, 8), d: rand(12, 30) });
+    }
+    caveTopFar = []; caveTopNear = []; caveBotFar = []; caveBotNear = []; caveGems = [];
+    for (let i = 0; i < 7; i++) caveTopFar.push({ x: rand(8, W - 8), w: rand(16, 34), len: rand(50, 95) });
+    for (let i = 0; i < 5; i++) caveTopNear.push({ x: rand(8, W - 8), w: rand(20, 42), len: rand(26, 58) });
+    for (let i = 0; i < 6; i++) caveBotFar.push({ x: rand(8, W - 8), w: rand(18, 36), len: rand(40, 80) });
+    for (let i = 0; i < 4; i++) caveBotNear.push({ x: rand(8, W - 8), w: rand(22, 44), len: rand(24, 52) });
+    for (let i = 0; i < 7; i++) {
+      const left = Math.random() < 0.5;
+      caveGems.push({ x: left ? rand(10, 34) : W - rand(10, 34), y: rand(40, H - 40), phase: Math.random() * Math.PI * 2 });
+    }
+
+    volcanoes.length = 0;
+    for (let i = 0; i < 4; i++) {
+      const left = i % 2 === 0;
+      volcanoes.push({ x: left ? rand(30, 90) : W - rand(30, 90), y: Math.random() * (H + 160), s: rand(0.85, 1.3) });
+    }
+
+    planets.length = 0;
+    const types = ['ringed', 'moon', 'nebula'];
+    for (let i = 0; i < 3; i++) {
+      planets.push({ x: rand(60, W - 60), y: Math.random() * (H + 200), type: types[i], s: rand(0.85, 1.2) });
     }
   }
 
@@ -425,6 +580,8 @@
     if (stageBanner) { stageBanner.t++; if (stageBanner.t > 140) stageBanner = null; }
     scorePulse = scorePulse > 0.01 ? scorePulse * 0.9 : 0;
     if (character && character.squash > 0) character.squash = Math.max(0, character.squash - 0.12);
+
+    updateAmbient();
 
     // Blinking
     if (state === 'dying' || state === 'gameover') {
@@ -624,21 +781,395 @@
       }
       ctx.globalAlpha = 1;
     }
+
+    drawSunMoon();
+    drawScenery();
+  }
+
+  // Per-stage scenery layers (each cross-fades in/out around its stage)
+  function drawScenery() {
+    drawMeadowGround();
+    drawForestTrees();
+    drawMountains();
+    drawCave();
+    drawVolcanoSide();
+    drawSpaceObjects();
+  }
+
+  // Sun (early stages) gives way to a cratered moon (late stages)
+  function drawSunMoon() {
+    const sunA = clamp(1 - (skyT - 2.7) / 0.7, 0, 1);
+    if (sunA > 0) {
+      const x = W - 84, y = 96;
+      let g = ctx.createRadialGradient(x, y, 8, x, y, 72);
+      g.addColorStop(0, 'rgba(255,238,178,0.85)');
+      g.addColorStop(1, 'rgba(255,238,178,0)');
+      ctx.globalAlpha = sunA;
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 72, y - 72, 144, 144);
+      ctx.fillStyle = '#ffe9a8';
+      ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff7dd';
+      ctx.beginPath(); ctx.arc(x - 6, y - 6, 18, 0, Math.PI * 2); ctx.fill();
+    }
+    const moonA = clamp((skyT - 3.5) / 0.9, 0, 1);
+    if (moonA > 0) {
+      const x = W - 84, y = 96;
+      let g = ctx.createRadialGradient(x, y, 6, x, y, 56);
+      g.addColorStop(0, 'rgba(214,228,255,0.7)');
+      g.addColorStop(1, 'rgba(214,228,255,0)');
+      ctx.globalAlpha = moonA;
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 56, y - 56, 112, 112);
+      ctx.fillStyle = '#e9efff';
+      ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(158,173,208,0.55)';
+      ctx.beginPath(); ctx.arc(x - 6, y - 4, 3.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 6, y + 6, 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + 1, y - 9, 1.7, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Prado: grassy ground with hills, trees and flowers (scrolls away as you climb)
+  function drawMeadowGround() {
+    const a = fadeWindow(skyT, -0.5, 1.0, 0.3);
+    if (a <= 0) return;
+    const sy = H - 64 - cameraY * 0.55;
+    if (sy > H + 90) return;
+    ctx.globalAlpha = a;
+    // Back hill
+    ctx.fillStyle = '#a5d87c';
+    ctx.beginPath();
+    ctx.moveTo(-4, sy - 26);
+    ctx.quadraticCurveTo(W * 0.3, sy - 78, W * 0.56, sy - 30);
+    ctx.quadraticCurveTo(W * 0.82, sy + 2, W + 4, sy - 16);
+    ctx.lineTo(W + 4, H + 90);
+    ctx.lineTo(-4, H + 90);
+    ctx.closePath();
+    ctx.fill();
+    // Front hill
+    ctx.fillStyle = '#7cc25b';
+    ctx.beginPath();
+    ctx.moveTo(-4, sy + 10);
+    ctx.quadraticCurveTo(W * 0.36, sy - 36, W * 0.72, sy + 8);
+    ctx.quadraticCurveTo(W * 0.9, sy + 24, W + 4, sy + 12);
+    ctx.lineTo(W + 4, H + 90);
+    ctx.lineTo(-4, H + 90);
+    ctx.closePath();
+    ctx.fill();
+    meadowTree(58, sy - 34, 1.0);
+    meadowTree(W - 70, sy - 26, 0.85);
+    const flowers = [[90, sy + 2], [170, sy - 8], [260, sy + 4], [330, sy + 12]];
+    for (const f of flowers) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(f[0], f[1] - 5, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffd54f';
+      ctx.beginPath(); ctx.arc(f[0], f[1] - 5, 1.1, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function meadowTree(x, y, s) {
+    ctx.fillStyle = '#6d4c33';
+    ctx.fillRect(x - 3 * s, y, 6 * s, 20 * s);
+    ctx.fillStyle = '#4e9a51';
+    ctx.beginPath(); ctx.arc(x, y - 8 * s, 15 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#5fae63';
+    ctx.beginPath(); ctx.arc(x - 7 * s, y - 2 * s, 10 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 8 * s, y - 3 * s, 9 * s, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Floresta: tree silhouettes passing by on both edges (parallax wrap)
+  function drawForestTrees() {
+    const a = fadeWindow(skyT, 0.6, 2.2, 0.35);
+    if (a <= 0) return;
+    const f = 0.5, span = H + 90;
+    ctx.globalAlpha = a;
+    for (const t of trees) {
+      let sy = (t.y - cameraY * f) % span;
+      if (sy < 0) sy += span;
+      forestTree(t.x, sy - 45, t.s, t.variant);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function forestTree(x, y, s, variant) {
+    if (variant === 0) { // round canopy
+      ctx.fillStyle = '#4a3826';
+      ctx.fillRect(x - 3 * s, y + 14 * s, 6 * s, 18 * s);
+      ctx.fillStyle = '#2c6e49';
+      ctx.beginPath(); ctx.arc(x, y, 17 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#35805a';
+      ctx.beginPath(); ctx.arc(x - 6 * s, y + 5 * s, 11 * s, 0, Math.PI * 2); ctx.fill();
+    } else { // pine
+      ctx.fillStyle = '#4a3826';
+      ctx.fillRect(x - 2.5 * s, y + 20 * s, 5 * s, 12 * s);
+      ctx.fillStyle = '#276b45';
+      for (let i = 0; i < 3; i++) {
+        const ty = y - i * 10 * s, tw = (16 - i * 4) * s;
+        ctx.beginPath();
+        ctx.moveTo(x - tw, ty + 12 * s);
+        ctx.lineTo(x, ty - 8 * s);
+        ctx.lineTo(x + tw, ty + 12 * s);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  // Montanhas: two parallax rows of jagged peaks with snow caps
+  function drawMountains() {
+    const a = fadeWindow(skyT, 1.7, 3.3, 0.4);
+    if (a <= 0) return;
+    drawRidge(ridgeFar, H + 140, 0.16, '#7d8cc4', 0.4 * a);
+    drawRidge(ridgeNear, H + 140, 0.3, '#5f6fae', 0.55 * a);
+  }
+
+  function drawRidge(rows, span, f, color, alpha) {
+    if (alpha <= 0) return;
+    ctx.globalAlpha = alpha;
+    for (const row of rows) {
+      let sy = (row.y - cameraY * f) % span;
+      if (sy < 0) sy += span;
+      const base = sy - 70;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(-12, base);
+      for (const p of row.pts) ctx.lineTo(p.x, base - p.h);
+      ctx.lineTo(W + 12, base);
+      ctx.lineTo(W + 12, base + 70);
+      ctx.lineTo(-12, base + 70);
+      ctx.closePath();
+      ctx.fill();
+      // Snow caps on the tallest peaks
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (const p of row.pts) {
+        if (p.h < 78) continue;
+        const px = p.x, py = base - p.h;
+        ctx.beginPath();
+        ctx.moveTo(px - 9, py + 12);
+        ctx.lineTo(px, py);
+        ctx.lineTo(px + 9, py + 12);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Cavernas: rock corridor — side walls, stalactites/stalagmites, glowing gems
+  function drawCave() {
+    const a = fadeWindow(skyT, 2.7, 4.3, 0.4);
+    if (a <= 0) return;
+    ctx.globalAlpha = a;
+    // Corridor walls framing the play area
+    ctx.fillStyle = '#191126';
+    ctx.beginPath();
+    ctx.moveTo(-6, -6);
+    for (const p of caveWalls.left) ctx.lineTo(p.d, p.y);
+    ctx.lineTo(-6, H + 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(W + 6, -6);
+    for (const p of caveWalls.right) ctx.lineTo(W - p.d, p.y);
+    ctx.lineTo(W + 6, H + 6);
+    ctx.closePath();
+    ctx.fill();
+    // Stalactites from the top edge (two depth layers)
+    ctx.fillStyle = '#241b38';
+    for (const s of caveTopFar) {
+      ctx.beginPath();
+      ctx.moveTo(s.x - s.w / 2, -3);
+      ctx.lineTo(s.x + s.w / 2, -3);
+      ctx.lineTo(s.x, s.len);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = '#2f2450';
+    for (const s of caveTopNear) {
+      ctx.beginPath();
+      ctx.moveTo(s.x - s.w / 2, -3);
+      ctx.lineTo(s.x + s.w / 2, -3);
+      ctx.lineTo(s.x, s.len * 0.8);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Stalagmites from the bottom edge
+    ctx.fillStyle = '#241b38';
+    for (const g of caveBotFar) {
+      ctx.beginPath();
+      ctx.moveTo(g.x - g.w / 2, H + 3);
+      ctx.lineTo(g.x + g.w / 2, H + 3);
+      ctx.lineTo(g.x, H - g.len);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = '#2f2450';
+    for (const g of caveBotNear) {
+      ctx.beginPath();
+      ctx.moveTo(g.x - g.w / 2, H + 3);
+      ctx.lineTo(g.x + g.w / 2, H + 3);
+      ctx.lineTo(g.x, H - g.len * 0.8);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Pulsing gems on the walls
+    for (const gem of caveGems) {
+      const tw = 0.5 + 0.5 * Math.sin(tick * 0.05 + gem.phase);
+      ctx.fillStyle = 'rgba(127,227,255,' + (0.25 + 0.45 * tw).toFixed(2) + ')';
+      ctx.beginPath();
+      ctx.arc(gem.x, gem.y, 3 + tw, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Vulcão: volcano cones on the edges with glowing craters and lava streaks
+  function drawVolcanoSide() {
+    const a = fadeWindow(skyT, 3.7, 5.2, 0.4);
+    if (a <= 0) return;
+    const f = 0.55, span = H + 160;
+    ctx.globalAlpha = a;
+    for (const v of volcanoes) {
+      let sy = (v.y - cameraY * f) % span;
+      if (sy < 0) sy += span;
+      volcanoCone(v.x, sy - 80, v.s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function volcanoCone(x, y, s) { // y = crater center
+    const w = 54 * s, h = 62 * s;
+    ctx.fillStyle = '#3a120c';
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, y + h);
+    ctx.lineTo(x - w * 0.18, y);
+    ctx.lineTo(x + w * 0.18, y);
+    ctx.lineTo(x + w / 2, y + h);
+    ctx.closePath();
+    ctx.fill();
+    // Crater glow (pulsing)
+    const pulse = 0.6 + 0.4 * Math.sin(tick * 0.05 + x);
+    let g = ctx.createRadialGradient(x, y, 1, x, y, 16 * s);
+    g.addColorStop(0, 'rgba(255,170,80,' + (0.9 * pulse).toFixed(2) + ')');
+    g.addColorStop(1, 'rgba(255,120,40,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - 16 * s, y - 16 * s, 32 * s, 32 * s);
+    // Lava streaks down the cone
+    ctx.strokeStyle = 'rgba(255,140,50,' + (0.5 + 0.3 * pulse).toFixed(2) + ')';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.1, y + 4);
+    ctx.lineTo(x - w * 0.26, y + h * 0.55);
+    ctx.moveTo(x + w * 0.12, y + 6);
+    ctx.lineTo(x + w * 0.3, y + h * 0.7);
+    ctx.stroke();
+  }
+
+  // Espaço: ringed planet, cratered moon and a soft nebula drifting by
+  function drawSpaceObjects() {
+    const a = clamp((skyT - 4.55) / 0.9, 0, 1);
+    if (a <= 0) return;
+    const f = 0.12, span = H + 200;
+    ctx.globalAlpha = a;
+    for (const p of planets) {
+      let sy = (p.y - cameraY * f) % span;
+      if (sy < 0) sy += span;
+      const y = sy - 100;
+      if (p.type === 'ringed') spacePlanet(p.x, y, 24 * p.s);
+      else if (p.type === 'moon') spaceMoon(p.x, y, 11 * p.s);
+      else spaceNebula(p.x, y, 60 * p.s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function spacePlanet(x, y, r) {
+    let g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.2, x, y, r);
+    g.addColorStop(0, '#8fd3e8');
+    g.addColorStop(1, '#3f7fae');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    // Cloud band
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x - r * 0.9, y + r * 0.25);
+    ctx.quadraticCurveTo(x, y + r * 0.45, x + r * 0.9, y + r * 0.2);
+    ctx.stroke();
+    // Ring
+    ctx.strokeStyle = 'rgba(216,228,255,0.75)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 1.7, r * 0.45, -0.35, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  function spaceMoon(x, y, r) {
+    ctx.fillStyle = '#b9c2d8';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(120,132,158,0.6)';
+    ctx.beginPath(); ctx.arc(x - r * 0.3, y - r * 0.2, r * 0.28, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + r * 0.35, y + r * 0.3, r * 0.2, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function spaceNebula(x, y, r) {
+    let g = ctx.createRadialGradient(x, y, 4, x, y, r);
+    g.addColorStop(0, 'rgba(150,96,224,0.30)');
+    g.addColorStop(0.6, 'rgba(88,70,190,0.16)');
+    g.addColorStop(1, 'rgba(88,70,190,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    let g2 = ctx.createRadialGradient(x + r * 0.5, y + r * 0.3, 2, x + r * 0.5, y + r * 0.3, r * 0.7);
+    g2.addColorStop(0, 'rgba(96,180,224,0.22)');
+    g2.addColorStop(1, 'rgba(96,180,224,0)');
+    ctx.fillStyle = g2;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  // Puffy multi-lobe cloud shape (shared by near + far layers)
+  function drawCloudShape(x, y, r) {
+    ctx.beginPath();
+    ctx.arc(x - r * 0.9, y + r * 0.15, r * 0.6, 0, Math.PI * 2);
+    ctx.arc(x - r * 0.3, y - r * 0.3, r * 0.8, 0, Math.PI * 2);
+    ctx.arc(x + r * 0.45, y - r * 0.15, r * 0.68, 0, Math.PI * 2);
+    ctx.arc(x + r * 0.95, y + r * 0.2, r * 0.55, 0, Math.PI * 2);
+    ctx.ellipse(x, y + r * 0.35, r * 1.35, r * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawFarClouds() {
+    const fill = cloudFill(skyT, 0.6);
+    if (!fill) return;
+    ctx.fillStyle = fill;
+    for (const c of farClouds) {
+      let sy = (c.y - cameraY * 0.15) % H;
+      if (sy < 0) sy += H;
+      const cx = ((c.x + tick * c.drift) % (W + 90)) - 45;
+      drawCloudShape(cx, sy, c.r);
+    }
   }
 
   function drawClouds() {
-    const parallax = 0.4;
-    const span = H;
-    ctx.fillStyle = cloudFill(skyT);
+    const fill = cloudFill(skyT, 1);
+    if (!fill) return;
+    ctx.fillStyle = fill;
     for (const c of clouds) {
-      let sy = (c.y - cameraY * parallax) % span;
-      if (sy < 0) sy += span;
-      ctx.beginPath();
-      ctx.arc(c.x, sy, c.r, 0, Math.PI * 2);
-      ctx.arc(c.x + c.r * 0.9, sy + c.r * 0.25, c.r * 0.75, 0, Math.PI * 2);
-      ctx.arc(c.x - c.r * 0.9, sy + c.r * 0.25, c.r * 0.65, 0, Math.PI * 2);
-      ctx.fill();
+      let sy = (c.y - cameraY * 0.4) % H;
+      if (sy < 0) sy += H;
+      const cx = ((c.x + tick * c.drift) % (W + 90)) - 45;
+      drawCloudShape(cx, sy, c.r);
     }
+  }
+
+  // Subtle vignette for depth (drawn over the world, under the UI)
+  function drawVignette() {
+    const g = ctx.createRadialGradient(W / 2, H * 0.45, H * 0.35, W / 2, H * 0.5, H * 0.78);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(8,10,24,0.16)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
   }
 
   function drawPlatform(p, sy) {
@@ -1232,7 +1763,9 @@
     if (shake > 0) ctx.translate(rand(-shake, shake) * 0.4, rand(-shake, shake) * 0.4);
 
     drawBackground();
+    drawFarClouds();
     drawClouds();
+    drawAmbient();
 
     for (const p of platforms) {
       const sy = p.y - cameraY;
@@ -1250,6 +1783,7 @@
 
     ctx.restore();
 
+    drawVignette();
     drawUI();
     drawStageBanner();
   }
@@ -1356,6 +1890,7 @@
   // ---------- Boot ----------
   initClouds();
   initStars();
+  initScenery();
   reset();
   fitCanvas();
   requestAnimationFrame(loop);
