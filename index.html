@@ -129,7 +129,11 @@
   };
 
   // ---------- State ----------
-  let state = 'start';             // 'start' | 'playing' | 'dying' | 'gameover'
+  let state = 'start';             // 'start' | 'help' | 'playing' | 'paused' | 'dying' | 'gameover'
+  let menuSel = 0;                 // selected option in the main menu
+  let pauseSel = 0;                // selected option in the pause menu
+  const MENU_ITEMS = ['JOGAR', 'COMO JOGAR'];
+  const PAUSE_ITEMS = ['CONTINUAR', 'REINICIAR', 'MENU PRINCIPAL'];
   let character = null;
   let platforms = [];
   let enemies = [];
@@ -573,6 +577,7 @@
 
   // ---------- Update ----------
   function update() {
+    if (state === 'paused') return; // world frozen while paused
     tick++;
 
     // Timers that run in every state
@@ -1681,6 +1686,85 @@
     ctx.globalAlpha = 1;
   }
 
+  // ---------- Menu screens ----------
+  function menuBackdrop(alpha) {
+    ctx.fillStyle = 'rgba(10,16,28,' + alpha + ')';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+  }
+
+  function menuTitle(text, y) {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '800 40px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(text, W / 2, y);
+  }
+
+  function drawMenuItem(text, y, selected) {
+    if (selected) {
+      ctx.font = '700 21px "Segoe UI", system-ui, sans-serif';
+      const w = ctx.measureText(text).width;
+      roundRect(W / 2 - w / 2 - 20, y - 19, w + 40, 38, 10);
+      ctx.fillStyle = 'rgba(126,231,135,0.18)';
+      ctx.fill();
+      // selection arrow
+      ctx.fillStyle = '#7ee787';
+      ctx.beginPath();
+      ctx.moveTo(W / 2 - w / 2 - 14, y - 7);
+      ctx.lineTo(W / 2 - w / 2 - 5, y);
+      ctx.lineTo(W / 2 - w / 2 - 14, y + 7);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.font = '500 21px "Segoe UI", system-ui, sans-serif';
+    }
+    ctx.fillStyle = selected ? '#ffffff' : 'rgba(205,216,240,0.75)';
+    ctx.fillText(text, W / 2, y);
+  }
+
+  function menuPrompt(text, y) {
+    const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 300);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#7ee787';
+    ctx.font = '600 14px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(text, W / 2, y);
+    ctx.globalAlpha = 1;
+  }
+
+  function drawMenuScreen() {
+    menuBackdrop(0.55);
+    menuTitle('DOODLE JUMP', 168);
+    ctx.fillStyle = '#ffd54f';
+    ctx.font = '700 16px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('Recorde: ' + best + ' m', W / 2, 212);
+    MENU_ITEMS.forEach((it, i) => drawMenuItem(it, 305 + i * 54, menuSel === i));
+    menuPrompt('↑ ↓ escolher   ·   ESPAÇO confirmar', 448);
+  }
+
+  function drawHelpScreen() {
+    menuBackdrop(0.62);
+    menuTitle('COMO JOGAR', 130);
+    const lines = [
+      '← → ou A D para se mover',
+      'P ou ESC para pausar',
+      'Molas te lançam mais alto',
+      'Foguetes dão voo temporário',
+      'Cuidado com os monstros!',
+      '6 fases, cada uma mais difícil'
+    ];
+    ctx.font = '500 17px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#cdd8f0';
+    lines.forEach((line, i) => ctx.fillText(line, W / 2, 220 + i * 32));
+    menuPrompt('ESPAÇO ou ESC para voltar', 452);
+  }
+
+  function drawPauseScreen() {
+    menuBackdrop(0.6);
+    menuTitle('PAUSADO', 178);
+    PAUSE_ITEMS.forEach((it, i) => drawMenuItem(it, 285 + i * 52, pauseSel === i));
+    menuPrompt('↑ ↓ escolher   ·   ESPAÇO confirmar   ·   P continuar', 460);
+  }
+
   function drawStageBanner() {
     if (!stageBanner || (state !== 'playing' && state !== 'dying')) return;
     const b = stageBanner;
@@ -1708,7 +1792,7 @@
   }
 
   function drawUI() {
-    if (state !== 'start') {
+    if (state !== 'start' && state !== 'help') {
       // Score on a soft pill so it stays readable over any sky
       roundRect(8, 8, 124, 64, 12);
       ctx.fillStyle = 'rgba(10,16,28,0.35)';
@@ -1738,13 +1822,11 @@
     }
 
     if (state === 'start') {
-      overlay('DOODLE JUMP', [
-        'Suba o máximo que puder!',
-        'Molas te lançam mais alto',
-        'Foguetes dão voo temporário',
-        'Cuidado com os monstros!',
-        '6 fases, cada uma mais difícil'
-      ]);
+      drawMenuScreen();
+    } else if (state === 'help') {
+      drawHelpScreen();
+    } else if (state === 'paused') {
+      drawPauseScreen();
     } else if (state === 'gameover') {
       const lines = [];
       if (deathCause === 'enemy') {
@@ -1804,12 +1886,58 @@
   }
 
   function tryStart() {
-    if (state === 'start' || state === 'gameover') startGame();
+    if (state === 'gameover') startGame();
+  }
+
+  function togglePause() {
+    if (state === 'playing') { state = 'paused'; pauseSel = 0; }
+    else if (state === 'paused') state = 'playing';
+  }
+
+  // Confirms the highlighted option in whichever screen is up
+  function confirmAction() {
+    if (state === 'start') {
+      if (menuSel === 0) startGame();
+      else state = 'help';
+    } else if (state === 'help') {
+      state = 'start';
+    } else if (state === 'paused') {
+      if (pauseSel === 0) state = 'playing';
+      else if (pauseSel === 1) startGame();
+      else { reset(); menuSel = 0; state = 'start'; }
+    } else {
+      tryStart(); // gameover
+    }
   }
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === ' ' || e.key === 'Enter') {
-      tryStart();
+    const k = e.key;
+    if ((k === 'p' || k === 'P' || k === 'Escape') && (state === 'playing' || state === 'paused')) {
+      togglePause();
+      e.preventDefault();
+      return;
+    }
+    if (state === 'help' && (k === 'Escape' || k === 'p' || k === 'P')) {
+      state = 'start';
+      e.preventDefault();
+      return;
+    }
+    if ((state === 'start' || state === 'paused') && (k === 'ArrowUp' || k === 'w' || k === 'W')) {
+      const n = state === 'start' ? MENU_ITEMS.length : PAUSE_ITEMS.length;
+      if (state === 'start') menuSel = (menuSel + n - 1) % n;
+      else pauseSel = (pauseSel + n - 1) % n;
+      e.preventDefault();
+      return;
+    }
+    if ((state === 'start' || state === 'paused') && (k === 'ArrowDown' || k === 's' || k === 'S')) {
+      const n = state === 'start' ? MENU_ITEMS.length : PAUSE_ITEMS.length;
+      if (state === 'start') menuSel = (menuSel + 1) % n;
+      else pauseSel = (pauseSel + 1) % n;
+      e.preventDefault();
+      return;
+    }
+    if (k === ' ' || k === 'Enter') {
+      confirmAction();
       e.preventDefault();
       return;
     }
@@ -1834,10 +1962,10 @@
     mouseX = null;
   });
 
-  canvas.addEventListener('click', tryStart);
+  canvas.addEventListener('click', confirmAction);
 
   canvas.addEventListener('touchstart', (e) => {
-    if (state !== 'playing') { tryStart(); return; }
+    if (state !== 'playing') { confirmAction(); return; }
     e.preventDefault();
     mouseX = pointerX(e.touches[0].clientX);
     inputMode = 'mouse';
