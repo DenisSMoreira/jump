@@ -136,10 +136,18 @@
   };
 
   // ---------- State ----------
-  let state = 'start';             // 'start' | 'help' | 'playing' | 'paused' | 'dying' | 'gameover'
+  let state = 'start';             // 'start' | 'help' | 'customize' | 'playing' | 'paused' | 'dying' | 'gameover'
   let menuSel = 0;                 // selected option in the main menu
   let pauseSel = 0;                // selected option in the pause menu
-  const MENU_ITEMS = ['JOGAR', 'COMO JOGAR'];
+  const MENU_ITEMS = ['JOGAR', 'PERSONAGEM', 'COMO JOGAR'];
+  const CHARACTERS=[
+    {id:'doodler',name:'DOODLER',color:'#7ee787'},
+    {id:'spiderman',name:'HOMEM-ARANHA',color:'#ef3340'},
+    {id:'ironman',name:'HOMEM DE FERRO',color:'#f6c445'},
+    {id:'captain',name:'CAPITÃO AMÉRICA',color:'#5aa9e6'},
+    {id:'hulk',name:'HULK',color:'#72c05b'}
+  ];
+  let characterSel=0,selectedCharacter='doodler';
   const PAUSE_ITEMS = ['CONTINUAR', 'REINICIAR', 'MENU PRINCIPAL'];
   let character = null;
   let platforms = [];
@@ -1893,6 +1901,7 @@
   }
 
   function drawDoodler(x, y, w, h, facing) {
+    if(selectedCharacter!=='doodler'){drawHero(x,y,w,h,selectedCharacter);return;}
     // Feet
     ctx.fillStyle = '#57b85c';
     ctx.beginPath();
@@ -1947,6 +1956,17 @@
     ctx.beginPath();
     ctx.arc(x + w / 2, y + h * 0.52, w * 0.10, 0.15 * Math.PI, 0.85 * Math.PI);
     ctx.stroke();
+  }
+
+  function drawHero(x,y,w,h,hero){
+    const suits={spiderman:['#e62429','#1769aa'],ironman:['#b71922','#8b1720'],captain:['#2962a3','#264b82'],hulk:['#72c05b','#6b3fa0']},p=suits[hero]||suits.spiderman;
+    ctx.fillStyle=p[1];ctx.beginPath();ctx.ellipse(x+w*.28,y+h-2,w*.17,h*.1,0,0,Math.PI*2);ctx.ellipse(x+w*.72,y+h-2,w*.17,h*.1,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=p[0];roundRect(x+w*.08,y+h*.35,w*.84,h*.61,9);ctx.fill();ctx.beginPath();ctx.ellipse(x+w/2,y+h*.27,w*.36,h*.27,0,0,Math.PI*2);ctx.fill();
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    if(hero==='spiderman'){ctx.strokeStyle='#17212b';ctx.lineWidth=1;for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(x+w/2,y+h*.02);ctx.lineTo(x+w*i/4,y+h*.55);ctx.stroke()}for(const r of [.14,.24]){ctx.beginPath();ctx.arc(x+w/2,y+h*.25,w*r,0,Math.PI*2);ctx.stroke()}ctx.fillStyle='#fff';ctx.beginPath();ctx.ellipse(x+w*.36,y+h*.25,w*.075,h*.12,-.25,0,Math.PI*2);ctx.ellipse(x+w*.64,y+h*.25,w*.075,h*.12,.25,0,Math.PI*2);ctx.fill();ctx.fillStyle='#17212b';ctx.beginPath();ctx.ellipse(x+w/2,y+h*.63,3,5,0,0,Math.PI*2);ctx.fill()}
+    else if(hero==='ironman'){ctx.fillStyle='#f6c445';ctx.beginPath();ctx.moveTo(x+w*.3,y+h*.13);ctx.lineTo(x+w*.7,y+h*.13);ctx.lineTo(x+w*.63,y+h*.43);ctx.lineTo(x+w*.37,y+h*.43);ctx.closePath();ctx.fill();ctx.fillStyle='#9df4ff';ctx.fillRect(x+w*.35,y+h*.25,w*.1,2);ctx.fillRect(x+w*.55,y+h*.25,w*.1,2);ctx.beginPath();ctx.arc(x+w/2,y+h*.64,4,0,Math.PI*2);ctx.fill()}
+    else if(hero==='captain'){ctx.fillStyle='#f2c7a5';ctx.fillRect(x+w*.29,y+h*.22,w*.42,h*.16);ctx.fillStyle='#fff';ctx.font='900 12px sans-serif';ctx.fillText('A',x+w/2,y+h*.12);ctx.font='900 16px sans-serif';ctx.fillText('★',x+w/2,y+h*.58)}
+    else{ctx.fillStyle='#263238';ctx.beginPath();ctx.moveTo(x+w*.18,y+h*.14);ctx.lineTo(x+w*.3,y+h*.02);ctx.lineTo(x+w*.43,y+h*.12);ctx.lineTo(x+w*.56,y+h*.01);ctx.lineTo(x+w*.8,y+h*.16);ctx.closePath();ctx.fill();ctx.fillRect(x+w*.27,y+h*.25,w*.17,3);ctx.fillRect(x+w*.56,y+h*.25,w*.17,3)}
   }
 
   function drawCharacter() {
@@ -2060,8 +2080,18 @@
     ctx.fillStyle = '#ffd54f';
     ctx.font = '700 16px "Segoe UI", system-ui, sans-serif';
     ctx.fillText('Recorde: ' + best + ' m', W / 2, 212);
-    MENU_ITEMS.forEach((it, i) => drawMenuItem(it, 305 + i * 54, menuSel === i));
-    menuPrompt('↑ ↓ escolher   ·   ESPAÇO confirmar', 448);
+    MENU_ITEMS.forEach((it,i)=>drawMenuItem(it,280+i*50,menuSel===i));
+    ctx.fillStyle='#aebbd3';ctx.font='600 12px "Segoe UI",sans-serif';ctx.fillText('Herói atual: '+CHARACTERS.find(c=>c.id===selectedCharacter).name,W/2,438);
+    menuPrompt('↑ ↓ escolher   ·   ESPAÇO confirmar',474);
+  }
+
+  function drawCustomizeScreen(){
+    menuBackdrop(.68);menuTitle('PERSONAGEM',90);const hero=CHARACTERS[characterSel];
+    ctx.save();ctx.translate(W/2,170);ctx.scale(2.15,2.15);const old=selectedCharacter;selectedCharacter=hero.id;drawDoodler(-20,-24,40,48,1);selectedCharacter=old;ctx.restore();
+    ctx.fillStyle=hero.color;ctx.font='800 20px "Segoe UI",sans-serif';ctx.fillText(hero.name,W/2,250);
+    const cw=62,g=7,sx=(W-(CHARACTERS.length*cw+4*g))/2;
+    CHARACTERS.forEach((item,i)=>{const x=sx+i*(cw+g);roundRect(x,290,cw,72,10);ctx.fillStyle=i===characterSel?'rgba(126,231,135,.22)':'rgba(255,255,255,.07)';ctx.fill();ctx.strokeStyle=i===characterSel?'#7ee787':'rgba(255,255,255,.16)';ctx.lineWidth=i===characterSel?2:1;ctx.stroke();ctx.save();ctx.translate(x+cw/2,302);ctx.scale(.72,.72);const prev=selectedCharacter;selectedCharacter=item.id;drawDoodler(-20,0,40,48,1);selectedCharacter=prev;ctx.restore()});
+    menuPrompt('← → escolher  ·  ESPAÇO usar  ·  ESC voltar',420);ctx.fillStyle='#aebbd3';ctx.font='500 13px "Segoe UI",sans-serif';ctx.fillText('No celular, toque para trocar',W/2,454);
   }
 
   function drawHelpScreen() {
@@ -2146,6 +2176,8 @@
 
     if (state === 'start') {
       drawMenuScreen();
+    } else if (state === 'customize') {
+      drawCustomizeScreen();
     } else if (state === 'help') {
       drawHelpScreen();
     } else if (state === 'paused') {
@@ -2220,8 +2252,8 @@
   // Confirms the highlighted option in whichever screen is up
   function confirmAction() {
     if (state === 'start') {
-      if (menuSel === 0) startGame();
-      else state = 'help';
+      if(menuSel===0)startGame();else if(menuSel===1){characterSel=CHARACTERS.findIndex(c=>c.id===selectedCharacter);state='customize'}else state='help';
+    } else if(state==='customize'){selectedCharacter=CHARACTERS[characterSel].id;state='start';
     } else if (state === 'help') {
       state = 'start';
     } else if (state === 'paused') {
@@ -2245,6 +2277,7 @@
       e.preventDefault();
       return;
     }
+    if(state==='customize'){if(k==='Escape'){state='start';e.preventDefault();return}if(k==='ArrowLeft'||k==='a'||k==='A'){characterSel=(characterSel+CHARACTERS.length-1)%CHARACTERS.length;e.preventDefault();return}if(k==='ArrowRight'||k==='d'||k==='D'){characterSel=(characterSel+1)%CHARACTERS.length;e.preventDefault();return}}
     if ((state === 'start' || state === 'paused') && (k === 'ArrowUp' || k === 'w' || k === 'W')) {
       const n = state === 'start' ? MENU_ITEMS.length : PAUSE_ITEMS.length;
       if (state === 'start') menuSel = (menuSel + n - 1) % n;
@@ -2285,10 +2318,18 @@
     mouseX = null;
   });
 
-  canvas.addEventListener('click', confirmAction);
+  function menuPointer(clientX,clientY){
+    if(state!=='customize'){confirmAction();return;}
+    const rect=canvas.getBoundingClientRect(),x=(clientX-rect.left)*(W/rect.width),y=(clientY-rect.top)*(H/rect.height);
+    if(y>=285&&y<=370){const cw=62,g=7,sx=(W-(CHARACTERS.length*cw+4*g))/2,i=Math.floor((x-sx)/(cw+g));if(i>=0&&i<CHARACTERS.length&&x<=sx+i*(cw+g)+cw)characterSel=i;}
+    else if(y>=390){confirmAction();}
+    else characterSel=(characterSel+1)%CHARACTERS.length;
+  }
+
+  canvas.addEventListener('click',e=>menuPointer(e.clientX,e.clientY));
 
   canvas.addEventListener('touchstart', (e) => {
-    if (state !== 'playing') { confirmAction(); return; }
+    if(state!=='playing'){e.preventDefault();menuPointer(e.touches[0].clientX,e.touches[0].clientY);return;}
     e.preventDefault();
     mouseX = pointerX(e.touches[0].clientX);
     inputMode = 'mouse';
