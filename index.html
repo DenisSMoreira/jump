@@ -2319,8 +2319,18 @@
   });
 
   function menuPointer(clientX,clientY){
-    if(state!=='customize'){confirmAction();return;}
     const rect=canvas.getBoundingClientRect(),x=(clientX-rect.left)*(W/rect.width),y=(clientY-rect.top)*(H/rect.height);
+    if(state==='start'){
+      const i=Math.round((y-280)/50);
+      if(i>=0&&i<MENU_ITEMS.length&&Math.abs(y-(280+i*50))<=24){menuSel=i;confirmAction();}
+      return;
+    }
+    if(state==='paused'){
+      const i=Math.round((y-285)/52);
+      if(i>=0&&i<PAUSE_ITEMS.length&&Math.abs(y-(285+i*52))<=24){pauseSel=i;confirmAction();}
+      return;
+    }
+    if(state!=='customize'){confirmAction();return;}
     if(y>=285&&y<=370){const cw=62,g=7,sx=(W-(CHARACTERS.length*cw+4*g))/2,i=Math.floor((x-sx)/(cw+g));if(i>=0&&i<CHARACTERS.length&&x<=sx+i*(cw+g)+cw)characterSel=i;}
     else if(y>=390){confirmAction();}
     else characterSel=(characterSel+1)%CHARACTERS.length;
