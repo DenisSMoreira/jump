@@ -68,7 +68,7 @@
   <div class="game-wrap">
     <canvas id="game" width="400" height="600"></canvas>
   </div>
-  <div class="hint"><b>&larr; &rarr;</b> ou <b>A / D</b> ou <b>arraste</b> para mover &middot; <b>ESPA&ccedil;O</b> ou toque para come&ccedil;ar &middot; coleta azul: pulo duplo</div>
+  <div class="hint"><b>&larr; &rarr;</b> ou <b>A / D</b> ou <b>arraste</b> para mover &middot; <b>ESPA&ccedil;O</b> ou toque para come&ccedil;ar &middot; coleta azul: pulos extras acumul&aacute;veis &middot; coleta lil&aacute;s: escudo</div>
   <div class="credit">Feito com qwen3.8-27b@Q4_K_XL</div>
 
   <script>
@@ -88,13 +88,17 @@
   const SPRING_VELOCITY= -20;      // big bounce on springs
   const ROCKET_VY      = -15;      // constant upward speed while rocketing
   const ROCKET_TIME    = 95;       // frames of flight (~1.6s)
-  const EXTRA_JUMP_VELOCITY = -10.5; // one optional midair jump from a collectible
+  const EXTRA_JUMP_VELOCITY = -16.5; // stronger optional midair jump from a collectible
+  const STOMP_VELOCITY = -15;      // rebound after jumping on a monster
   const MAX_JUMP_HEIGHT= (JUMP_VELOCITY * JUMP_VELOCITY) / (2 * GRAVITY); // 144px
   const MOVE_SPEED     = 5;        // px / frame (arrow keys)
   const MOUSE_SPEED    = 7;        // px / frame (mouse/touch follow)
   const PLATFORM_WIDTH = 72;
   const PLATFORM_HEIGHT= 16;
   const METER_SCALE    = 10;       // px per "meter" of score
+  const BEST_SCORE_KEY = 'doodle-jump-best-score';
+  const SCORE_HISTORY_KEY = 'doodle-jump-score-history';
+  const MAX_SCORE_HISTORY = 10;
 
   // ---------- Stages (gradual difficulty by altitude, in meters) ----------
   // gapMax must stay below MAX_JUMP_HEIGHT (144px).
@@ -163,14 +167,20 @@
   let cameraY = 0;                 // world-y at the top of the visible screen
   let highestY = 0;
   let score = 0;
-  let best = 0;
+  let best = loadBestScore();
+  let scoreHistory = loadScoreHistory();
+  best = Math.max(best, ...scoreHistory.map(entry => entry.score));
+  let lastRunWasRecord = false;
+  let shareFeedback = '';
+  let shareFeedbackTimer = 0;
   let inputMode = null;            // 'keys' | 'mouse'
   let mouseX = null;
   const keys = { left: false, right: false };
 
   let tick = 0;                    // frame counter (fixed timestep)
   let rocketTimer = 0;             // frames of rocket flight remaining
-  let extraJumpReady = false;      // one stored double jump from the cyan collectible
+  let extraJumpCharges = 0;        // accumulated extra jumps from cyan collectibles
+  let shieldReady = false;         // blocks one monster collision from the violet collectible
   let webTimer = 0;                // frames stuck in a spider web (4 seconds)
   let deathTimer = 0;
   let deathCause = 'fall';         // 'fall' | 'enemy'
@@ -234,6 +244,42 @@
   function wrapEnemy(e) {
     if (e.vx > 0 && e.x > W + 20) e.x = -20 - e.w;
     else if (e.vx < 0 && e.x < -20 - e.w) e.x = W + 20;
+  }
+
+  // Storage is deliberately best-effort: the game still runs in private or
+  // restricted browser contexts where localStorage may be unavailable.
+  function storageGet(key) {
+    try { return typeof localStorage === 'undefined' ? null : localStorage.getItem(key); }
+    catch (_) { return null; }
+  }
+
+  function storageSet(key, value) {
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(key, value); }
+    catch (_) { /* Storage is optional for gameplay. */ }
+  }
+
+  function loadBestScore() {
+    const value = Number(storageGet(BEST_SCORE_KEY));
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  }
+
+  function loadScoreHistory() {
+    try {
+      const saved = JSON.parse(storageGet(SCORE_HISTORY_KEY) || '[]');
+      if (!Array.isArray(saved)) return [];
+      return saved.filter(entry => entry && Number.isFinite(Number(entry.score))).slice(0, MAX_SCORE_HISTORY).map(entry => ({
+        score: Math.max(0, Math.floor(Number(entry.score))),
+        stage: Math.max(1, Math.floor(Number(entry.stage) || 1)),
+        character: typeof entry.character === 'string' ? entry.character : 'doodler',
+        cause: entry.cause === 'enemy' ? 'enemy' : 'fall',
+        at: Number(entry.at) || 0
+      }));
+    } catch (_) { return []; }
+  }
+
+  function persistScores() {
+    storageSet(BEST_SCORE_KEY, String(best));
+    storageSet(SCORE_HISTORY_KEY, JSON.stringify(scoreHistory));
   }
 
   // ---------- Sky (blends between stage skies with altitude) ----------
@@ -574,8 +620,7 @@
       enemies.push(e);
     }
 
-    // Collectibles floating between platforms. The extra-jump pickup is kept
-    // separate from the rocket so it offers a tactical recovery instead of flight.
+    // Collectibles floating between platforms. Each has a different recovery role.
     if (y < H - 400 && Math.random() < S.pickup) {
       pickups.push({
         type: 'rocket',
@@ -587,6 +632,14 @@
     } else if (y < H - 280 && Math.random() < S.pickup * 0.65) {
       pickups.push({
         type: 'extraJump',
+        x: rand(20, W - 44),
+        y: y + gap * rand(0.35, 0.65),
+        w: 28, h: 28,
+        phase: Math.random() * Math.PI * 2
+      });
+    } else if (y < H - 260 && Math.random() < S.pickup * 0.45) {
+      pickups.push({
+        type: 'shield',
         x: rand(20, W - 44),
         y: y + gap * rand(0.35, 0.65),
         w: 28, h: 28,
@@ -624,7 +677,8 @@
     highestY = character.y;
     score = 0;
     rocketTimer = 0;
-    extraJumpReady = false;
+    extraJumpCharges = 0;
+    shieldReady = false;
     webTimer = 0;
     deathCause = 'fall';
     killerKind = null;
@@ -634,11 +688,29 @@
     skyT = 0;
     stageIdx = 0;
     stageBanner = null;
+    lastRunWasRecord = false;
+    shareFeedback = '';
+    shareFeedbackTimer = 0;
   }
 
   function startGame() {
     reset();
     state = 'playing';
+  }
+
+  function saveRunResult() {
+    const previousBest = best;
+    best = Math.max(best, score);
+    lastRunWasRecord = score > previousBest;
+    scoreHistory.unshift({
+      score,
+      stage: stageIdx + 1,
+      character: selectedCharacter,
+      cause: deathCause,
+      at: Date.now()
+    });
+    scoreHistory = scoreHistory.slice(0, MAX_SCORE_HISTORY);
+    persistScores();
   }
 
   function die(cause, kind) {
@@ -647,17 +719,55 @@
     deathTimer = 55;
     deathCause = cause;
     killerKind = kind || null;
-    best = Math.max(best, score);
+    saveRunResult();
     shake = 12;
     spawnBurst(character.x + character.w / 2, character.y + character.h / 2, 26, '#8ee06a', 4);
   }
 
-  // Uses the collectible only once and never overrides rocket flight or the web.
-  // It intentionally works on the ascent or descent so a collected bonus can
-  // recover a missed platform without becoming a permanent movement upgrade.
+  function setShareFeedback(message) {
+    shareFeedback = message;
+    shareFeedbackTimer = 180;
+  }
+
+  function resultShareText() {
+    const stage = STAGES[stageIdx];
+    const prefix = lastRunWasRecord ? 'Novo recorde!' : 'Minha partida acabou!';
+    return prefix + ' Fiz ' + score + ' m no Doodle Jump, na fase ' + (stageIdx + 1) + ' (' + stage.name + '). Meu recorde é ' + best + ' m.';
+  }
+
+  async function shareResult() {
+    if (state !== 'gameover') return false;
+    const text = resultShareText();
+    const url = typeof location === 'undefined' ? '' : location.href;
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({ title: 'Doodle Jump', text, url });
+        setShareFeedback('Resultado compartilhado!');
+        return true;
+      }
+      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text + (url ? ' ' + url : ''));
+        setShareFeedback('Resultado copiado!');
+        return true;
+      }
+      if (typeof window !== 'undefined' && typeof window.prompt === 'function') {
+        window.prompt('Copie seu resultado:', text + (url ? ' ' + url : ''));
+        setShareFeedback('Copie o resultado para compartilhar.');
+        return true;
+      }
+    } catch (error) {
+      if (!error || error.name !== 'AbortError') setShareFeedback('Não foi possível compartilhar agora.');
+      return false;
+    }
+    setShareFeedback('Não foi possível compartilhar agora.');
+    return false;
+  }
+
+  // Each cyan collectible adds one charge. A charge can be spent on the ascent
+  // or descent, but never overrides rocket flight or the web.
   function tryExtraJump() {
-    if (!extraJumpReady || state !== 'playing' || rocketTimer > 0 || webTimer > 0 || !character) return false;
-    extraJumpReady = false;
+    if (extraJumpCharges <= 0 || state !== 'playing' || rocketTimer > 0 || webTimer > 0 || !character) return false;
+    extraJumpCharges--;
     character.vy = EXTRA_JUMP_VELOCITY;
     character.squash = 0.45;
     spawnBurst(character.x + character.w / 2, character.y + character.h / 2, 16, '#8cf5ff', 3.1);
@@ -673,6 +783,7 @@
     // Timers that run in every state
     if (shake > 0) shake--;
     if (stageBanner) { stageBanner.t++; if (stageBanner.t > 140) stageBanner = null; }
+    if (shareFeedbackTimer > 0 && --shareFeedbackTimer === 0) shareFeedback = '';
     scorePulse = scorePulse > 0.01 ? scorePulse * 0.9 : 0;
     if (character && character.squash > 0) character.squash = Math.max(0, character.squash - 0.12);
 
@@ -836,12 +947,35 @@
           if (e.kind === 'ufo') e.y = e.baseY + Math.sin(tick * 0.12 + e.phase) * 24;
         }
         if (rocketTimer <= 0 && !e.webSpent && (!e.spawnGrace || e.spawnGrace <= 0) && aabb(hitbox, e)) {
+          const feet = character.y + character.h;
+          const prevFeet = feet - character.vy;
+          const stompedFromAbove = character.vy > 0 && prevFeet <= e.y + Math.min(8, e.h * 0.3);
+          if (stompedFromAbove) {
+            // Landing on the top defeats the monster and turns it into a trampoline.
+            character.y = e.y - character.h;
+            character.vy = STOMP_VELOCITY;
+            character.squash = 0.8;
+            e.defeated = true;
+            spawnBurst(e.x + e.w / 2, e.y + e.h / 2, 20, '#ffd54f', 3.6);
+            shake = Math.max(shake, 5);
+            continue;
+          }
+          if (shieldReady) {
+            // One shield absorbs one whole monster encounter, including a spider web.
+            shieldReady = false;
+            e.defeated = true;
+            spawnBurst(e.x + e.w / 2, e.y + e.h / 2, 22, '#b9a7ff', 3.7);
+            spawnBurst(character.x + character.w / 2, character.y + character.h / 2, 14, '#e5ddff', 2.8);
+            shake = Math.max(shake, 6);
+            continue;
+          }
           if (e.kind === 'spider') {
             webTimer = 240; e.webSpent = true; character.vx = 0; character.vy = 0; shake = 7;
             spawnBurst(character.x + character.w / 2, character.y + character.h / 2, 18, '#ffffff', 2.5);
           } else { die('enemy', e.kind); break; }
         }
       }
+      enemies = enemies.filter(e => !e.defeated);
 
       // --- Collectibles ---
       for (let i = pickups.length - 1; i >= 0; i--) {
@@ -849,8 +983,11 @@
         const off = Math.sin(tick * 0.06 + p.phase) * 4;
         if (aabb(hitbox, { x: p.x, y: p.y + off, w: p.w, h: p.h })) {
           if (p.type === 'extraJump') {
-            extraJumpReady = true;
+            extraJumpCharges++;
             spawnBurst(p.x + p.w / 2, p.y + p.h / 2, 16, '#8cf5ff', 3.1);
+          } else if (p.type === 'shield') {
+            shieldReady = true;
+            spawnBurst(p.x + p.w / 2, p.y + p.h / 2, 18, '#b9a7ff', 3.2);
           } else {
             rocketTimer = ROCKET_TIME;
             character.vy = ROCKET_VY;
@@ -1969,6 +2106,21 @@
       return;
     }
 
+    if (p.type === 'shield') {
+      const pulse = 0.72 + Math.sin(tick * 0.14 + p.phase) * 0.18;
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = 'rgba(166,145,255,0.24)';
+      ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      // The outlined badge reads as a shield even for players who cannot rely on color.
+      ctx.fillStyle = '#8b78e6';
+      ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(10, -7); ctx.lineTo(8, 7); ctx.lineTo(0, 13); ctx.lineTo(-8, 7); ctx.lineTo(-10, -7); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#eeeaff'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, -5); ctx.lineTo(5, 5); ctx.lineTo(0, 9); ctx.lineTo(-5, 5); ctx.lineTo(-6, -5); ctx.closePath(); ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
     // Flame flicker
     const f = 6 + Math.sin(tick * 0.5 + p.phase) * 3;
     ctx.fillStyle = 'rgba(255,157,59,0.8)';
@@ -2147,6 +2299,13 @@
       drawDoodler(-c.w / 2, -c.h, c.w, c.h, c.facing);
     }
     ctx.restore();
+    if (shieldReady && state === 'playing') {
+      const sx=character.x+character.w/2,sy=character.y-cameraY+character.h/2,r=Math.max(character.w,character.h)*.78;
+      const pulse=.72+Math.sin(tick*.16)*.18;
+      ctx.save();ctx.globalAlpha=pulse;ctx.strokeStyle='#c9bdff';ctx.lineWidth=2.5;
+      ctx.beginPath();ctx.moveTo(sx,sy-r);ctx.lineTo(sx+r*.72,sy-r*.38);ctx.lineTo(sx+r*.58,sy+r*.62);ctx.lineTo(sx,sy+r);ctx.lineTo(sx-r*.58,sy+r*.62);ctx.lineTo(sx-r*.72,sy-r*.38);ctx.closePath();ctx.stroke();
+      ctx.globalAlpha=.14;ctx.fillStyle='#9987ff';ctx.fill();ctx.restore();
+    }
     if (webTimer > 0 && state === 'playing') {
       const sx=c.x+c.w/2, sy=c.y-cameraY+c.h/2, r=Math.max(c.w,c.h)*.68;
       ctx.save();ctx.strokeStyle='rgba(245,250,255,.88)';ctx.lineWidth=1.5;
@@ -2181,6 +2340,37 @@
     ctx.font = '700 16px "Segoe UI", system-ui, sans-serif';
     ctx.fillText('Toque ou pressione ESPAÇO', W / 2, H / 2 + 100);
     ctx.globalAlpha = 1;
+  }
+
+  function drawGameOverScreen() {
+    menuBackdrop(0.72);
+    menuTitle('FIM DE JOGO', 126);
+    const stage = STAGES[stageIdx];
+    let reason = 'Você caiu da plataforma.';
+    if (deathCause === 'enemy') {
+      const enemy = ENEMY_KINDS[killerKind] ? ENEMY_KINDS[killerKind].name : 'monstro';
+      reason = 'Você foi atingido por um ' + enemy + '!';
+    }
+    ctx.font = '500 16px "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#cdd8f0';
+    ctx.fillText(reason, W / 2, 174);
+    ctx.fillText('Fase ' + (stageIdx + 1) + ' · ' + stage.name, W / 2, 208);
+    ctx.fillStyle = '#ffffff'; ctx.font = '800 24px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(score + ' m', W / 2, 244);
+    ctx.fillStyle = '#ffd54f'; ctx.font = '700 16px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('Recorde salvo: ' + best + ' m', W / 2, 274);
+    ctx.fillStyle = lastRunWasRecord ? '#7ee787' : '#aebbd3'; ctx.font = '700 14px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(lastRunWasRecord ? '★ NOVO RECORDE ★' : 'Histórico salvo neste dispositivo', W / 2, 304);
+    const recent = scoreHistory.slice(0, 3).map(entry => entry.score + ' m').join(' · ');
+    ctx.fillStyle = '#aebbd3'; ctx.font = '600 12px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('Últimas partidas: ' + (recent || 'sem partidas'), W / 2, 330);
+    roundRect(48, 354, W - 96, 42, 12); ctx.fillStyle = 'rgba(126,231,135,.20)'; ctx.fill();
+    ctx.strokeStyle = '#7ee787'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.font = '800 15px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText('COMPARTILHAR RESULTADO', W / 2, 375);
+    ctx.fillStyle = shareFeedback ? '#7ee787' : '#aebbd3'; ctx.font = '600 12px "Segoe UI", system-ui, sans-serif';
+    ctx.fillText(shareFeedback || 'Use S ou toque no botão para compartilhar', W / 2, 424);
+    menuPrompt('ESPAÇO para reiniciar', 466);
   }
 
   // ---------- Menu screens ----------
@@ -2267,14 +2457,16 @@
       'P ou ESC para pausar',
       'Molas te lançam mais alto',
       'Foguetes dão voo temporário',
-      'Setas azuis dão um pulo duplo',
+      'Setas azuis acumulam pulos extras altos',
+      'Escudos lilás bloqueiam um monstro',
+      'Pule sobre monstros para usá-los de trampolim',
       'Cuidado com os monstros!',
       '6 fases, cada uma mais difícil'
     ];
     ctx.font = '500 17px "Segoe UI", system-ui, sans-serif';
     ctx.fillStyle = '#cdd8f0';
-    lines.forEach((line, i) => ctx.fillText(line, W / 2, 220 + i * 32));
-    menuPrompt('ESPAÇO ou ESC para voltar', 452);
+    lines.forEach((line, i) => ctx.fillText(line, W / 2, 200 + i * 29));
+    menuPrompt('ESPAÇO ou ESC para voltar', 462);
   }
 
   function drawPauseScreen() {
@@ -2331,10 +2523,17 @@
         ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';ctx.font='800 14px "Segoe UI",sans-serif';
         ctx.fillText('PRESO NA TEIA  '+Math.ceil(webTimer/60)+'s',W/2,97);
       }
-      if (extraJumpReady && state === 'playing') {
-        roundRect(W / 2 - 82, 118, 164, 30, 15); ctx.fillStyle='rgba(19,91,117,.82)'; ctx.fill();
-        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#d8fbff';ctx.font='800 13px "Segoe UI",sans-serif';
-        ctx.fillText('↟ PULO DUPLO · TOQUE',W/2,133);
+      let powerY = webTimer > 0 ? 118 : 80;
+      if (extraJumpCharges > 0 && state === 'playing') {
+        roundRect(W / 2 - 104, powerY, 208, 30, 15); ctx.fillStyle='rgba(19,91,117,.82)'; ctx.fill();
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#d8fbff';ctx.font='800 12px "Segoe UI",sans-serif';
+        ctx.fillText('↟ PULOS EXTRAS ×' + extraJumpCharges + ' · TOQUE',W/2,powerY+15);
+        powerY += 36;
+      }
+      if (shieldReady && state === 'playing') {
+        roundRect(W / 2 - 96, powerY, 192, 30, 15); ctx.fillStyle='rgba(70,54,128,.84)'; ctx.fill();
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#eeeaff';ctx.font='800 12px "Segoe UI",sans-serif';
+        ctx.fillText('◈ ESCUDO · BLOQUEIA 1 MONSTRO',W/2,powerY+15);
       }
 
       // Current stage label (top-right)
@@ -2359,15 +2558,7 @@
     } else if (state === 'paused') {
       drawPauseScreen();
     } else if (state === 'gameover') {
-      const lines = [];
-      if (deathCause === 'enemy') {
-        const nm = ENEMY_KINDS[killerKind] ? ENEMY_KINDS[killerKind].name : 'monstro';
-        lines.push('Você foi atingido por um ' + nm + '!');
-      }
-      lines.push('Fase alcançada: ' + (stageIdx + 1) + ' · ' + STAGES[stageIdx].name);
-      lines.push('Pontuação: ' + score + ' m');
-      lines.push('Recorde: ' + best + ' m');
-      overlay('FIM DE JOGO', lines);
+      drawGameOverScreen();
     }
   }
 
@@ -2454,6 +2645,11 @@
       return;
     }
     if(state==='customize'){const columns=characterGrid().columns;if(k==='Escape'){state='start';e.preventDefault();return}if(k==='ArrowLeft'||k==='a'||k==='A'){characterSel=(characterSel+CHARACTERS.length-1)%CHARACTERS.length;e.preventDefault();return}if(k==='ArrowRight'||k==='d'||k==='D'){characterSel=(characterSel+1)%CHARACTERS.length;e.preventDefault();return}if(k==='ArrowUp'||k==='w'||k==='W'){characterSel=(characterSel+CHARACTERS.length-columns)%CHARACTERS.length;e.preventDefault();return}if(k==='ArrowDown'||k==='s'||k==='S'){characterSel=(characterSel+columns)%CHARACTERS.length;e.preventDefault();return}}
+    if (state === 'gameover' && (k === 's' || k === 'S')) {
+      shareResult();
+      e.preventDefault();
+      return;
+    }
     if ((state === 'start' || state === 'paused') && (k === 'ArrowUp' || k === 'w' || k === 'W')) {
       const n = state === 'start' ? MENU_ITEMS.length : PAUSE_ITEMS.length;
       if (state === 'start') menuSel = (menuSel + n - 1) % n;
@@ -2509,6 +2705,11 @@
     if(state==='paused'){
       const i=Math.round((y-285)/52);
       if(i>=0&&i<PAUSE_ITEMS.length&&Math.abs(y-(285+i*52))<=24){pauseSel=i;confirmAction();}
+      return;
+    }
+    if(state==='gameover'){
+      if(x>=48&&x<=W-48&&y>=354&&y<=396)shareResult();
+      else confirmAction();
       return;
     }
     if(state!=='customize'){confirmAction();return;}
