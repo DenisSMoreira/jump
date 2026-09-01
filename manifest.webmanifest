@@ -1,0 +1,16 @@
+{
+  "name": "Skybound // Ascensão",
+  "short_name": "Skybound",
+  "description": "Uma corrida vertical original com desafios, coleções e duelos 1x1.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#101522",
+  "theme_color": "#101522",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
