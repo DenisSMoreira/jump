@@ -1,6 +1,6 @@
-# Doodle Jump
+# Skybound // Ascensão
 
-Um clone do clássico **Doodle Jump** em um único arquivo `index.html` — HTML + CSS + JavaScript puro, sem dependências nem build.
+Um MVP original de ascensão vertical para mobile em `index.html`, com Canvas, progresso local e funcionamento offline. Não usa arte, personagens ou nomes de franquias de terceiros.
 
 ## ▶️ Jogar online
 
@@ -10,39 +10,38 @@ Um clone do clássico **Doodle Jump** em um único arquivo `index.html` — HTML
 
 | Ação | Controles |
 |---|---|
-| Mover | `←` `→` ou `A` / `D`, ou arraste (mouse/toque) |
-| Começar / recomeçar | `ESPAÇO` ou toque na tela |
+| Mover | Arraste no Canvas, botões de direção ou `←` / `→` (`A` / `D` no desenvolvimento) |
+| Inclinação | Ative em Configurações; o navegador pedirá a permissão quando necessária |
+| Pausar | Botão de pausa, `Esc`, ou mudança para segundo plano |
 
-- **Molas** te lançam mais alto.
-- **Foguetes** dão voo temporário — e invencibilidade contra monstros.
-- As bordas da tela são contínuas: você atravessa de um lado ao outro.
+- O personagem salta automaticamente.
+- As bordas são contínuas, então é possível atravessar de um lado ao outro.
+- O jogo pausa automaticamente em segundo plano.
 
-## Fases e monstros
+## Conteúdo do MVP local
 
-A dificuldade cresce com a altitude, em 8 fases (Prado → Floresta → Montanhas → Cavernas → Vulcão → Espaço → Planeta → Nebulosa), cada uma com céu, plataformas e inimigos próprios:
+O jogo inclui Jornada com 60 fases locais (seis capítulos de dez), Infinito, desafio diário e duelo 1x1 local. Duelos locais são explicitamente uma simulação offline: não há matchmaking nem ranking de produção.
 
-| Monstro | Comportamento | Aparece a partir de |
+| Capítulo | Mecânica de navegação | Perigo |
 |---|---|---|
-| 🦖 Pterodáctilo | Voo horizontal contínuo | Montanhas |
-| 🟢 Slime | Pula no lugar entre duas alturas | Montanhas |
-| 🦇 Morcego | Rápido, voa em zigue-zague | Cavernas |
-| 👻 Fantasma | Semitransparente, persegue você horizontalmente | Cavernas |
-| 🛸 OVNI | Rápido com oscilação vertical forte e luzes piscando | Espaço |
-| 🤖 Robô | Patrulha horizontal, virando nas bordas da tela | Planeta |
-| 👽 Alien | Pula na sua direção entre um salto e outro | Planeta |
-| ☄️ Cometa | Rastro rápido em diagonal com cauda brilhante | Nebulosa |
+| Jardins Suspensos | plataformas elásticas e vento | rajadas laterais |
+| Bosque Luminoso | plataformas frágeis | perigos móveis |
+| Picos de Vidro | alternância e rotas | fragmentos sinalizados |
+| Forja Abissal | esteiras e plataformas temporárias | calor intermitente |
+| Estação Orbital | portais e gravidade leve | drones locais |
+| Arquipélago Celeste | plataformas por ritmo | nuvens e vento |
 
-## 🧪 Teste de prompt em modelo quantizado Q4
+## Estado e validação
 
-Este jogo foi gerado a partir de **prompts** enviados ao modelo `qwen3.8-27b@Q4_K_XL` — uma versão **quantizada em Q4** (GGUF, K-quants) de um modelo com 27 bilhões de parâmetros. O objetivo do projeto é testar o que um modelo quantizado consegue produzir: um jogo completo e funcional (física, colisão, renderização em canvas, dificuldade progressiva, responsividade mobile), refinado iteração a iteração via prompt.
+O progresso é armazenado apenas no navegador neste MVP. A extensão adiciona save versionado, sementes determinísticas, replay local compacto, missões, conquistas, preferências de acessibilidade, idiomas PT-BR/EN e cache PWA.
 
-### Vantagens da quantização Q4
+As integrações de conta, backend autoritativo, pagamentos, anúncios reais, privacidade de produção e publicação em lojas não são simuladas. Consulte [CHECKLIST_IMPLEMENTACAO.md](CHECKLIST_IMPLEMENTACAO.md) e [PENDENCIAS_E_ACESSOS.md](PENDENCIAS_E_ACESSOS.md) para o estado correto.
 
-- **Muito menos memória**: um modelo de 27B em precisão completa (FP16) ocupa ~54 GB; em Q4_K_XL cai para ~16 GB — cabe numa GPU de consumo com 16 GB de VRAM, ou até roda em CPU/RAM comum.
-- **Roda localmente**: sem API, sem custo por token e sem enviar seus dados para terceiros — privacidade total.
-- **Inferência mais rápida**: menos bytes lidos da memória a cada token significa respostas mais rápidas e menor consumo de energia.
-- **Qualidade próxima do original**: os K-quants usam precisão mista (blocos com mais bits onde o modelo é mais sensível), então a perda em relação ao modelo completo é pequena para a maioria das tarefas — inclusive geração de código, como este jogo demonstra.
-- **Democratiza modelos grandes**: quem não tem acesso a datacenter consegue usar modelos de fronteira no próprio hardware.
+Execute a verificação local com:
+
+```bash
+node tests/smoke.mjs
+```
 
 ## Rodando localmente
 
