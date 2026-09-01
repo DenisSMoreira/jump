@@ -118,7 +118,15 @@
     { name: 'Planeta',   minScore: 3000, gapMin: 74, gapMax: 138, spring: 0.09, moving: 0.38, enemy: 0.19, pickup: 0.028,
       enemySpeed: [2.2, 4.2], moveMult: 1.65, sky: ['#0a1e2e', '#123c4f', '#1d5c6b'], plat: { body: '#2e7d8a', top: '#6fd3c7', deco: 'alien' } },
     { name: 'Nebulosa',  minScore: 4000, gapMin: 78, gapMax: 142, spring: 0.08, moving: 0.42, enemy: 0.22, pickup: 0.026,
-      enemySpeed: [2.4, 4.6], moveMult: 1.80, sky: ['#1a0530', '#3d1157', '#6b2a8f'], plat: { body: '#7b4fae', top: '#c99af0', deco: 'nebula' } }
+      enemySpeed: [2.4, 4.6], moveMult: 1.80, sky: ['#1a0530', '#3d1157', '#6b2a8f'], plat: { body: '#7b4fae', top: '#c99af0', deco: 'nebula' } },
+    { name: 'Oceano Celeste', minScore: 5500, gapMin: 78, gapMax: 138, spring: 0.10, moving: 0.44, enemy: 0.23, pickup: 0.030,
+      enemySpeed: [2.5, 4.8], moveMult: 1.85, sky: ['#063b62', '#0b7893', '#62d8d1'], plat: { body: '#167f98', top: '#7fe8e5', deco: 'coral' } },
+    { name: 'Metrópole Neon', minScore: 7000, gapMin: 80, gapMax: 140, spring: 0.09, moving: 0.47, enemy: 0.25, pickup: 0.028,
+      enemySpeed: [2.7, 5.0], moveMult: 1.95, sky: ['#0f1130', '#26245d', '#ec5ea6'], plat: { body: '#3a277c', top: '#6cf5e8', deco: 'circuit' } },
+    { name: 'Templo Solar', minScore: 8800, gapMin: 82, gapMax: 142, spring: 0.11, moving: 0.50, enemy: 0.27, pickup: 0.027,
+      enemySpeed: [2.8, 5.2], moveMult: 2.05, sky: ['#4b1640', '#b34850', '#ffd27a'], plat: { body: '#a65f2f', top: '#ffe49a', deco: 'rune' } },
+    { name: 'Vazio Quântico', minScore: 11000, gapMin: 84, gapMax: 142, spring: 0.10, moving: 0.54, enemy: 0.29, pickup: 0.026,
+      enemySpeed: [3.0, 5.4], moveMult: 2.15, sky: ['#05040e', '#111336', '#2b1451'], plat: { body: '#302064', top: '#a883ff', deco: 'void' } }
   ];
 
   function metersAt(y) { return Math.max(0, (H - 140 - y) / METER_SCALE); }
@@ -374,9 +382,9 @@
   }
 
   // ---------- Ambient particles (per-stage atmosphere, screen space) ----------
-  const AMBIENT_TYPES = ['fluff', 'leaf', 'snow', 'spore', 'ember', 'shoot', 'dust', 'stardust'];
-  const AMBIENT_RATE = [0.10, 0.09, 0.13, 0.08, 0.16, 0.012, 0.10, 0.08];
-  const AMBIENT_CAP  = [24, 22, 30, 20, 30, 5, 26, 30];
+  const AMBIENT_TYPES = ['fluff', 'leaf', 'snow', 'spore', 'ember', 'shoot', 'dust', 'stardust', 'bubble', 'pixel', 'mote', 'voidspark'];
+  const AMBIENT_RATE = [0.10, 0.09, 0.13, 0.08, 0.16, 0.012, 0.10, 0.08, 0.09, 0.12, 0.08, 0.055];
+  const AMBIENT_CAP  = [24, 22, 30, 20, 30, 5, 26, 30, 22, 26, 24, 18];
 
   function spawnAmbient(type) {
     if (type === 'shoot') {
@@ -384,14 +392,14 @@
       ambient.push({ type: type, x: fromLeft ? -20 : W + 20, y: rand(30, H * 0.4), vx: (fromLeft ? 1 : -1) * rand(6, 9), vy: rand(1.2, 2.2), life: 70, maxLife: 70 });
       return;
     }
-    const rising = type === 'spore' || type === 'ember' || type === 'dust' || type === 'stardust';
+    const rising = type === 'spore' || type === 'ember' || type === 'dust' || type === 'stardust' || type === 'bubble' || type === 'mote' || type === 'voidspark';
     const p = {
       type: type,
       x: Math.random() * W,
       y: rising ? H + rand(4, 30) : -rand(4, 30),
       vy: 0,
       phase: Math.random() * Math.PI * 2,
-      size: type === 'fluff' ? rand(1.8, 3.4) : type === 'snow' ? rand(1, 2.4) : type === 'leaf' ? rand(3, 5) : type === 'dust' ? rand(1.2, 2.4) : type === 'stardust' ? rand(1, 2.2) : rand(1.6, 3),
+      size: type === 'fluff' ? rand(1.8, 3.4) : type === 'snow' ? rand(1, 2.4) : type === 'leaf' ? rand(3, 5) : type === 'dust' ? rand(1.2, 2.4) : type === 'stardust' ? rand(1, 2.2) : type === 'bubble' ? rand(2, 5) : type === 'pixel' ? rand(1.5, 3.5) : type === 'mote' ? rand(1.2, 2.8) : type === 'voidspark' ? rand(1.5, 3) : rand(1.6, 3),
       color: null
     };
     if (type === 'fluff') p.vy = rand(0.35, 0.8);
@@ -400,6 +408,10 @@
     else if (type === 'spore') p.vy = -rand(0.3, 0.7);
     else if (type === 'dust') { p.vy = -rand(0.25, 0.6); p.color = ['#6fd3c7', '#9fe8dc'][Math.floor(Math.random() * 2)]; }
     else if (type === 'stardust') { p.vy = -rand(0.3, 0.8); p.color = ['#ff7fc4', '#c99af0', '#7fd3f0'][Math.floor(Math.random() * 3)]; }
+    else if (type === 'bubble') { p.vy = -rand(0.25, 0.55); p.color = ['#c6ffff', '#7fe8e5'][Math.floor(Math.random() * 2)]; }
+    else if (type === 'pixel') { p.vy = rand(0.3, 0.9); p.color = ['#6cf5e8', '#ff70bb', '#9f82ff'][Math.floor(Math.random() * 3)]; }
+    else if (type === 'mote') { p.vy = -rand(0.2, 0.55); p.color = ['#ffe49a', '#ffb36b', '#fff0c5'][Math.floor(Math.random() * 3)]; }
+    else if (type === 'voidspark') { p.vy = -rand(0.15, 0.5); p.color = ['#b995ff', '#6cf5e8'][Math.floor(Math.random() * 2)]; }
     else p.vy = -rand(0.8, 1.9); // ember
     ambient.push(p);
   }
@@ -469,6 +481,25 @@
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 3, 0, Math.PI * 2); ctx.fill();
         ctx.globalAlpha = 0.5 + 0.45 * tw;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else if (p.type === 'bubble') {
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = p.color; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.35; ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x - p.size * 0.28, p.y - p.size * 0.28, p.size * 0.24, 0, Math.PI * 2); ctx.fill();
+      } else if (p.type === 'pixel') {
+        ctx.globalAlpha = 0.7 + 0.25 * Math.sin(tick * 0.11 + p.phase);
+        ctx.fillStyle = p.color; ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+      } else if (p.type === 'mote') {
+        const tw = 0.5 + 0.5 * Math.sin(tick * 0.07 + p.phase);
+        ctx.fillStyle = p.color; ctx.globalAlpha = 0.2 + 0.35 * tw;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.65 + 0.3 * tw;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+      } else if (p.type === 'voidspark') {
+        const tw = 0.5 + 0.5 * Math.sin(tick * 0.12 + p.phase);
+        ctx.globalAlpha = 0.35 + 0.55 * tw; ctx.strokeStyle = p.color; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(p.x - p.size * 2, p.y); ctx.lineTo(p.x + p.size * 2, p.y); ctx.moveTo(p.x, p.y - p.size * 2); ctx.lineTo(p.x, p.y + p.size * 2); ctx.stroke();
       } else { // ember
         const fl = 0.6 + 0.4 * Math.sin(tick * 0.3 + p.phase);
         ctx.globalAlpha = 0.5 + 0.45 * fl;
@@ -1105,6 +1136,10 @@
     drawSpaceObjects();
     drawAlienTerrain();
     drawNebulaBands();
+    drawSkyOcean();
+    drawNeonCity();
+    drawSunTemple();
+    drawQuantumVoid();
   }
 
   // Sun (early stages) gives way to a cratered moon (late stages)
@@ -1554,6 +1589,89 @@
     ctx.restore();
   }
 
+  // Oceano Celeste: translucent currents and bubble trails through a blue sky.
+  function drawSkyOcean() {
+    const a = fadeWindow(skyT, 7.6, 9.25, 0.4);
+    if (a <= 0) return;
+    ctx.save(); ctx.globalAlpha = a;
+    for (let i = 0; i < 5; i++) {
+      const y = 110 + i * 105 + Math.sin(tick * 0.018 + i) * 16;
+      ctx.strokeStyle = i % 2 ? 'rgba(179,255,248,0.22)' : 'rgba(74,205,226,0.24)';
+      ctx.lineWidth = 14; ctx.beginPath();
+      for (let x = -20; x <= W + 20; x += 24) {
+        const wave = y + Math.sin(x * 0.022 + tick * 0.028 + i) * 10;
+        if (x === -20) ctx.moveTo(x, wave); else ctx.lineTo(x, wave);
+      }
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(222,255,255,0.45)'; ctx.lineWidth = 1.5;
+    for (let i = 0; i < 8; i++) {
+      const x = (i * 73 + 28) % W, y = (i * 109 + tick * 0.12) % H;
+      ctx.beginPath(); ctx.arc(x, H - y, 4 + (i % 3) * 2, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Metrópole Neon: a distant animated skyline with cyan and pink windows.
+  function drawNeonCity() {
+    const a = fadeWindow(skyT, 8.6, 10.25, 0.4);
+    if (a <= 0) return;
+    ctx.save(); ctx.globalAlpha = a;
+    for (let i = 0; i < 12; i++) {
+      const w = 26 + (i % 3) * 8, x = i * 36 - 14, h = 70 + ((i * 37) % 105);
+      const y = H - h + Math.sin(tick * 0.012 + i) * 4;
+      ctx.fillStyle = i % 2 ? 'rgba(14,16,54,0.82)' : 'rgba(25,18,74,0.84)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = i % 2 ? 'rgba(108,245,232,0.38)' : 'rgba(255,105,187,0.34)'; ctx.lineWidth = 1;
+      ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+      ctx.fillStyle = i % 2 ? '#6cf5e8' : '#ff70bb';
+      for (let row = 0; row < 4; row++) for (let col = 0; col < 2; col++) {
+        if ((row + col + i) % 3 !== 0) ctx.fillRect(x + 6 + col * 9, y + 12 + row * 17, 4, 5);
+      }
+    }
+    ctx.strokeStyle = 'rgba(108,245,232,0.2)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, H - 45); ctx.lineTo(W, H - 45); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Templo Solar: floating columns and a warm glowing sun behind the course.
+  function drawSunTemple() {
+    const a = fadeWindow(skyT, 9.6, 11.25, 0.4);
+    if (a <= 0) return;
+    ctx.save(); ctx.globalAlpha = a;
+    const sunX = W * .72, sunY = 134, sunR = 48;
+    const glow = ctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, sunR * 2.2);
+    glow.addColorStop(0, 'rgba(255,247,190,0.72)'); glow.addColorStop(.45, 'rgba(255,181,88,0.23)'); glow.addColorStop(1, 'rgba(255,181,88,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffe49a'; ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 4; i++) {
+      const x = i % 2 ? W - 42 - (i * 13) : 42 + i * 13;
+      let y = (i * 156 - cameraY * .22) % (H + 180); if (y < 0) y += H + 180;
+      const h = 94 + (i % 2) * 30;
+      ctx.fillStyle = 'rgba(117,57,38,0.64)'; ctx.fillRect(x - 11, y - 90, 22, h);
+      ctx.fillStyle = 'rgba(255,218,142,0.76)'; ctx.fillRect(x - 14, y - 94, 28, 7); ctx.fillRect(x - 14, y + h - 98, 28, 7);
+      ctx.fillStyle = 'rgba(255,244,194,0.55)'; ctx.fillRect(x - 3, y - 84, 6, h - 18);
+    }
+    ctx.restore();
+  }
+
+  // Vazio Quântico: a receding grid and unstable portal mark the final biome.
+  function drawQuantumVoid() {
+    const a = clamp((skyT - 10.65) / .45, 0, 1);
+    if (a <= 0) return;
+    ctx.save(); ctx.globalAlpha = a;
+    const horizon = H * .64, cx = W * .5;
+    ctx.strokeStyle = 'rgba(168,131,255,0.28)'; ctx.lineWidth = 1;
+    for (let i = -8; i <= 8; i++) { ctx.beginPath(); ctx.moveTo(cx + i * 7, horizon); ctx.lineTo(cx + i * 47, H + 15); ctx.stroke(); }
+    for (let i = 0; i < 7; i++) { const y = horizon + Math.pow(i / 6, 1.8) * (H - horizon); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    const pulse = .7 + .3 * Math.sin(tick * .06);
+    ctx.strokeStyle = 'rgba(108,245,232,' + (.28 * pulse).toFixed(2) + ')'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.ellipse(cx, H * .24, 42 + pulse * 8, 22 + pulse * 4, tick * .01, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(185,149,255,0.46)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(cx, H * .24, 22 + pulse * 4, 11 + pulse * 2, -tick * .018, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
   // Puffy multi-lobe cloud shape (shared by near + far layers)
   function drawCloudShape(x, y, r) {
     ctx.beginPath();
@@ -1699,6 +1817,31 @@
         ctx.beginPath();
         ctx.arc(gx, sy - 4, 1.8, 0, Math.PI * 2);
         ctx.fill();
+      }
+    } else if (t.deco === 'coral') {
+      for (let i = 0; i < 3; i++) {
+        const gx = p.x + p.w * (0.25 + i * 0.25);
+        ctx.strokeStyle = i % 2 ? '#7fe8e5' : '#ff9e9e'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(gx, sy); ctx.lineTo(gx - 3, sy - 7); ctx.moveTo(gx, sy - 3); ctx.lineTo(gx + 4, sy - 8); ctx.stroke();
+      }
+    } else if (t.deco === 'circuit') {
+      ctx.strokeStyle = '#6cf5e8'; ctx.lineWidth = 1.2;
+      for (let i = 0; i < 3; i++) {
+        const gx = p.x + p.w * (0.2 + i * 0.3);
+        ctx.beginPath(); ctx.moveTo(gx - 7, sy - 3); ctx.lineTo(gx, sy - 3); ctx.lineTo(gx + 3, sy - 7); ctx.stroke();
+        ctx.fillStyle = i % 2 ? '#ff70bb' : '#6cf5e8'; ctx.beginPath(); ctx.arc(gx - 7, sy - 3, 1.7, 0, Math.PI * 2); ctx.fill();
+      }
+    } else if (t.deco === 'rune') {
+      ctx.strokeStyle = '#fff0b8'; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i++) {
+        const gx = p.x + p.w * (0.25 + i * 0.25);
+        ctx.beginPath(); ctx.moveTo(gx, sy - 8); ctx.lineTo(gx + 4, sy - 4); ctx.lineTo(gx, sy); ctx.lineTo(gx - 4, sy - 4); ctx.closePath(); ctx.stroke();
+      }
+    } else if (t.deco === 'void') {
+      for (let i = 0; i < 3; i++) {
+        const gx = p.x + p.w * (0.25 + i * 0.25), a = .55 + .45 * Math.sin(tick * .12 + i + p.x);
+        ctx.strokeStyle = 'rgba(185,149,255,' + a.toFixed(2) + ')'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(gx - 4, sy - 4); ctx.lineTo(gx + 4, sy - 4); ctx.moveTo(gx, sy - 8); ctx.lineTo(gx, sy); ctx.stroke();
       }
     } else { // spark (space) — twinkling dots
       for (let i = 0; i < 3; i++) {
@@ -2484,7 +2627,7 @@
       'Escudos lilás bloqueiam um monstro',
       'Pule sobre monstros para usá-los de trampolim',
       'Cuidado com os monstros!',
-      '6 fases, cada uma mais difícil'
+      '12 fases, cada uma mais desafiadora'
     ];
     ctx.font = '500 17px "Segoe UI", system-ui, sans-serif';
     ctx.fillStyle = '#cdd8f0';
