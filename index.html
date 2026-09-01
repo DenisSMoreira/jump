@@ -735,14 +735,37 @@
     return prefix + ' Fiz ' + score + ' m no Doodle Jump, na fase ' + (stageIdx + 1) + ' (' + stage.name + '). Meu recorde é ' + best + ' m.';
   }
 
+  // Captures the rendered game-over canvas synchronously so the share action
+  // retains its user gesture and can attach the record as a PNG file.
+  function captureResultScreenshot() {
+    if (typeof File === 'undefined' || typeof atob === 'undefined' || !canvas || typeof canvas.toDataURL !== 'function') return null;
+    try {
+      const dataUrl = canvas.toDataURL('image/png');
+      const encoded = dataUrl.split(',')[1];
+      if (!encoded) return null;
+      const binary = atob(encoded), bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new File([bytes], 'doodle-jump-recorde-' + score + 'm.png', { type: 'image/png' });
+    } catch (_) { return null; }
+  }
+
   async function shareResult() {
     if (state !== 'gameover') return false;
     const text = resultShareText();
     const url = typeof location === 'undefined' ? '' : location.href;
+    const screenshot = captureResultScreenshot();
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-        await navigator.share({ title: 'Doodle Jump', text, url });
-        setShareFeedback('Resultado compartilhado!');
+        const shareData = { title: 'Doodle Jump', text, url };
+        const canShareImage = screenshot && typeof navigator.canShare === 'function' && navigator.canShare({ files: [screenshot] });
+        if (canShareImage) shareData.files = [screenshot];
+        await navigator.share(shareData);
+        setShareFeedback(canShareImage ? 'Print do recorde compartilhado!' : 'Resultado compartilhado!');
+        return true;
+      }
+      if (screenshot && typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.write === 'function' && typeof ClipboardItem !== 'undefined') {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': screenshot })]);
+        setShareFeedback('Print do recorde copiado!');
         return true;
       }
       if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
@@ -986,7 +1009,7 @@
             extraJumpCharges++;
             spawnBurst(p.x + p.w / 2, p.y + p.h / 2, 16, '#8cf5ff', 3.1);
           } else if (p.type === 'shield') {
-            shieldReady = true;
+            shieldReady = true; // Boolean by design: shields never stack beyond one hit.
             spawnBurst(p.x + p.w / 2, p.y + p.h / 2, 18, '#b9a7ff', 3.2);
           } else {
             rocketTimer = ROCKET_TIME;
@@ -2367,7 +2390,7 @@
     roundRect(48, 354, W - 96, 42, 12); ctx.fillStyle = 'rgba(126,231,135,.20)'; ctx.fill();
     ctx.strokeStyle = '#7ee787'; ctx.lineWidth = 1.5; ctx.stroke();
     ctx.fillStyle = '#ffffff'; ctx.font = '800 15px "Segoe UI", system-ui, sans-serif';
-    ctx.fillText('COMPARTILHAR RESULTADO', W / 2, 375);
+    ctx.fillText('COMPARTILHAR PRINT DO RECORDE', W / 2, 375);
     ctx.fillStyle = shareFeedback ? '#7ee787' : '#aebbd3'; ctx.font = '600 12px "Segoe UI", system-ui, sans-serif';
     ctx.fillText(shareFeedback || 'Use S ou toque no botão para compartilhar', W / 2, 424);
     menuPrompt('ESPAÇO para reiniciar', 466);
@@ -2525,15 +2548,15 @@
       }
       let powerY = webTimer > 0 ? 118 : 80;
       if (extraJumpCharges > 0 && state === 'playing') {
-        roundRect(W / 2 - 104, powerY, 208, 30, 15); ctx.fillStyle='rgba(19,91,117,.82)'; ctx.fill();
-        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#d8fbff';ctx.font='800 12px "Segoe UI",sans-serif';
-        ctx.fillText('↟ PULOS EXTRAS ×' + extraJumpCharges + ' · TOQUE',W/2,powerY+15);
+        roundRect(W / 2 - 40, powerY, 80, 30, 15); ctx.fillStyle='rgba(19,91,117,.82)'; ctx.fill();
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#d8fbff';ctx.font='800 16px "Segoe UI",sans-serif';
+        ctx.fillText('↟ ' + extraJumpCharges,W/2,powerY+15);
         powerY += 36;
       }
       if (shieldReady && state === 'playing') {
-        roundRect(W / 2 - 96, powerY, 192, 30, 15); ctx.fillStyle='rgba(70,54,128,.84)'; ctx.fill();
-        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#eeeaff';ctx.font='800 12px "Segoe UI",sans-serif';
-        ctx.fillText('◈ ESCUDO · BLOQUEIA 1 MONSTRO',W/2,powerY+15);
+        roundRect(W / 2 - 40, powerY, 80, 30, 15); ctx.fillStyle='rgba(70,54,128,.84)'; ctx.fill();
+        ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#eeeaff';ctx.font='800 16px "Segoe UI",sans-serif';
+        ctx.fillText('◈ 1',W/2,powerY+15);
       }
 
       // Current stage label (top-right)
