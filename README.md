@@ -12,17 +12,23 @@ Um clone do clássico **Doodle Jump** em um único arquivo `index.html` — HTML
 |---|---|
 | Mover | `←` `→` ou `A` / `D`, ou arraste (mouse/toque) |
 | Começar / recomeçar | `ESPAÇO` ou toque na tela |
+| Pulo extra | `ESPAÇO`, clique ou toque durante o jogo (com cargas coletadas) |
 
 - **Molas** te lançam mais alto.
 - **Foguetes** dão voo temporário — e invencibilidade contra monstros.
+- **Setas azuis** acumulam pulos extras; gaste com `ESPAÇO`, clique ou toque.
+- **Escudos lilás** bloqueiam um encontro com monstro.
+- **Pise nos monstros** para usá-los de trampolim.
+- **Aranhas** te prendem na teia por 4 s; **plataformas quebradiças** desmoronam após o pouso.
 - As bordas da tela são contínuas: você atravessa de um lado ao outro.
 
 ## Fases e monstros
 
-A dificuldade cresce com a altitude, em 8 fases (Prado → Floresta → Montanhas → Cavernas → Vulcão → Espaço → Planeta → Nebulosa), cada uma com céu, plataformas e inimigos próprios:
+A dificuldade cresce com a altitude, em 16 fases (Prado → Floresta → Montanhas → Cavernas → Vulcão → Espaço → Planeta → Nebulosa → Oceano Celeste → Metrópole Neon → Templo Solar → Vazio Quântico → Selva Bioluminescente → Fortaleza de Gelo → Deserto de Vidro → Tempestade Eterna), cada uma com céu, plataformas e inimigos próprios:
 
 | Monstro | Comportamento | Aparece a partir de |
 |---|---|---|
+| 🕷️ Aranha | Rasteja na teia; prende você por 4 s | Floresta |
 | 🦖 Pterodáctilo | Voo horizontal contínuo | Montanhas |
 | 🟢 Slime | Pula no lugar entre duas alturas | Montanhas |
 | 🦇 Morcego | Rápido, voa em zigue-zague | Cavernas |
@@ -53,3 +59,7 @@ Basta abrir o `index.html` em qualquer navegador moderno:
 python3 -m http.server 8000
 # depois acesse http://localhost:8000
 ```
+
+## 📐 Arquitetura e roadmap
+
+Documentação detalhada da arquitetura do jogo e do histórico de desenvolvimento até a publicação: [`docs/arquitetura-e-roadmap.md`](docs/arquitetura-e-roadmap.md).
